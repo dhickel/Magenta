@@ -63,6 +63,11 @@ class PublicRunSubmissionControllerTest {
             null,
             "project-1",
             "workspace-1",
+            null,
+            null,
+            null,
+            null,
+            "Plan stream run",
             "model-a",
             null
         ));
@@ -72,6 +77,7 @@ class PublicRunSubmissionControllerTest {
         assertThat(assignmentService.lastRequest.priority()).isEqualTo(9);
         assertThat(assignmentService.lastRequest.projectId()).isEqualTo("project-1");
         assertThat(assignmentService.lastRequest.workspaceId()).isEqualTo("workspace-1");
+        assertThat(assignmentService.lastRequest.runDisplayName()).isEqualTo("Plan stream run");
         assertThat(assignmentService.lastRequest.modelOverride()).isEqualTo("model-a");
         assertThat(assignmentService.lastRequest.input()).containsEntry("taskId", "plan-1");
         assertThat(assignmentService.lastRequest.input()).containsEntry("conversationId", "conversation-1");
@@ -94,6 +100,11 @@ class PublicRunSubmissionControllerTest {
             null,
             null,
             "workspace-1",
+            null,
+            null,
+            null,
+            null,
+            "Plan stream run",
             "model-a",
             null
         ));
@@ -102,6 +113,33 @@ class PublicRunSubmissionControllerTest {
         assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
         assertThat(captured.events).anyMatch(event -> event.contains("event:submitted"));
         assertThat(captured.events).noneMatch(event -> event.contains("event:TaskExecutionEvent"));
+    }
+
+    @Test
+    void planRunStreamRejectsMissingRunNameForNonJobSubmission() throws Exception {
+        CapturingAssignmentService assignmentService = new CapturingAssignmentService();
+        PlanController controller = new PlanController(
+            new StubPlanService(),
+            null,
+            assignmentService,
+            new StubAgentProfileService()
+        );
+
+        SseEmitter emitter = controller.streamRun("plan-1", new PlanController.PlanRunRequest(
+            Map.of("prompt", "ship it"),
+            "conversation-1",
+            null,
+            null,
+            "project-1",
+            null,
+            null,
+            null
+        ));
+        CapturedSse captured = initializeEmitter(emitter);
+
+        assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.events).anyMatch(event -> event.contains("Run name is required for task submissions."));
+        assertThat(assignmentService.lastRequest).isNull();
     }
 
     @Test
@@ -284,11 +322,39 @@ class PublicRunSubmissionControllerTest {
             null,
             null,
             null,
-            null
+            null,
+            null,
+            null,
+            null,
+            null,
+            "Plan submit run"
         ));
 
         assertThat(assignment.priority()).isEqualTo(9);
         assertThat(assignmentService.lastRequest.priority()).isEqualTo(9);
+        assertThat(assignmentService.lastRequest.runDisplayName()).isEqualTo("Plan submit run");
+    }
+
+    @Test
+    void planSubmitRejectsMissingRunNameForNonJobSubmission() {
+        CapturingAssignmentService assignmentService = new CapturingAssignmentService();
+        PlanController controller = new PlanController(
+            new StubPlanService(),
+            null,
+            assignmentService,
+            new StubAgentProfileService()
+        );
+
+        assertThatThrownBy(() -> controller.submitToAgent("plan-1", new PlanController.SubmitRequest(
+            "agent-1",
+            null,
+            null,
+            null,
+            null
+        )))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Run name is required for task submissions.");
+        assertThat(assignmentService.lastRequest).isNull();
     }
 
     @Test
@@ -577,6 +643,7 @@ class PublicRunSubmissionControllerTest {
                 request.jobId(),
                 request.jobItemId(),
                 request.assignmentType(),
+                request.runDisplayName(),
                 request.priority() == null ? 0 : request.priority(),
                 OrchestrationStatus.QUEUED,
                 request.modelOverride(),
@@ -598,6 +665,8 @@ class PublicRunSubmissionControllerTest {
                 null,
                 Instant.now(),
                 Instant.now(),
+                null,
+                null,
                 null,
                 null
             );

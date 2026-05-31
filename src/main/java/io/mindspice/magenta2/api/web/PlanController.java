@@ -184,6 +184,7 @@ public class PlanController {
                 null,          // jobId
                 null,          // jobItemId
                 AssignmentType.TASK_RUN,
+                requireRunDisplayName(request.runDisplayName(), null),
                 request.priority() != null ? request.priority() : PUBLIC_SUBMIT_PRIORITY,
                 normalize(request.modelOverride()),
                 normalize(request.projectId()),
@@ -302,11 +303,14 @@ public class PlanController {
         SseEmitter emitter = SseStreamLifecycle.createEmitter();
         try {
             planService.getTask(planId);
+            String jobId = normalize(request == null ? null : request.jobId());
+            String runDisplayName = requireRunDisplayName(request == null ? null : request.runDisplayName(), jobId);
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 resolveAgentId(request == null ? null : request.agentId()),
-                normalize(request == null ? null : request.jobId()),
+                jobId,
                 null,
                 AssignmentType.TASK_RUN,
+                runDisplayName,
                 request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
                 normalize(request == null ? null : request.modelOverride()),
                 normalize(request == null ? null : request.projectId()),
@@ -321,6 +325,7 @@ public class PlanController {
                 "event", "submitted",
                 "assignmentId", assignment.id(),
                 "taskId", planId,
+                "runDisplayName", displayValue(assignment.runDisplayName()),
                 "status", assignment.status().name(),
                 "priority", assignment.priority()
             ));
@@ -367,6 +372,18 @@ public class PlanController {
         return input;
     }
 
+    private String requireRunDisplayName(String value, String jobId) {
+        String normalized = normalize(value);
+        if (normalized == null && !StringUtils.hasText(jobId)) {
+            throw new IllegalArgumentException("Run name is required for task submissions.");
+        }
+        return normalized;
+    }
+
+    private String displayValue(String value) {
+        return StringUtils.hasText(value) ? value : "";
+    }
+
     // ── Request DTOs ──
 
     public record PlanRunRequest(
@@ -380,6 +397,7 @@ public class PlanController {
         String outputRouteType,
         String outputWorkAreaId,
         String outputDirectRelativePath,
+        String runDisplayName,
         String modelOverride,
         Integer priority
     ) {
@@ -394,7 +412,7 @@ public class PlanController {
             Integer priority
         ) {
             this(inputValues, conversationId, agentId, jobId, projectId, workspaceId,
-                null, null, null, null, modelOverride, priority);
+                null, null, null, null, null, modelOverride, priority);
         }
     }
 
@@ -407,7 +425,8 @@ public class PlanController {
         String selectedWorkAreaId,
         String outputRouteType,
         String outputWorkAreaId,
-        String outputDirectRelativePath
+        String outputDirectRelativePath,
+        String runDisplayName
     ) {
         public SubmitRequest(
             String agentId,
@@ -416,7 +435,7 @@ public class PlanController {
             String projectId,
             String workspaceId
         ) {
-            this(agentId, modelOverride, priority, projectId, workspaceId, null, null, null, null);
+            this(agentId, modelOverride, priority, projectId, workspaceId, null, null, null, null, null);
         }
     }
 

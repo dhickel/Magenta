@@ -35,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.util.StringUtils;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -136,6 +137,7 @@ public class AgentOrchestrationController {
                 request.jobId(),
                 request.jobItemId(),
                 request.assignmentType(),
+                requireRunDisplayName(request.assignmentType(), request.jobId(), request.runDisplayName()),
                 request.priority(),
                 request.modelOverride(),
                 request.projectId(),
@@ -198,6 +200,28 @@ public class AgentOrchestrationController {
             return new ResponseStatusException(HttpStatus.NOT_FOUND, message);
         }
         return new ResponseStatusException(HttpStatus.CONFLICT, message);
+    }
+
+    private String requireRunDisplayName(AssignmentType assignmentType, String jobId, String runDisplayName) {
+        if (assignmentType == AssignmentType.TASK_RUN && !StringUtils.hasText(jobId)) {
+            return requireRunDisplayName(runDisplayName, "task submissions");
+        }
+        if (assignmentType == AssignmentType.WORKFLOW_RUN && !StringUtils.hasText(jobId)) {
+            return requireRunDisplayName(runDisplayName, "workflow submissions");
+        }
+        return normalize(runDisplayName);
+    }
+
+    private String requireRunDisplayName(String runDisplayName, String submissionType) {
+        String normalized = normalize(runDisplayName);
+        if (normalized == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Run name is required for " + submissionType + ".");
+        }
+        return normalized;
+    }
+
+    private String normalize(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     @GetMapping("/schedules")
@@ -411,6 +435,7 @@ public class AgentOrchestrationController {
         String outputRouteType,
         String outputWorkAreaId,
         String outputDirectRelativePath,
+        String runDisplayName,
         Map<String, Object> input
     ) {
         public AgentAssignmentCreateRequest(
@@ -424,7 +449,7 @@ public class AgentOrchestrationController {
             Map<String, Object> input
         ) {
             this(jobId, jobItemId, assignmentType, priority, modelOverride, projectId, workspaceId,
-                null, null, null, null, input);
+                null, null, null, null, null, input);
         }
 
         public AgentAssignmentCreateRequest {

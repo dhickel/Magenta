@@ -36,9 +36,9 @@ Security summary: alpha routes are currently open at the application layer. Requ
 | --- | --- | --- |
 | `POST /api/chat/stream` | Live chat turn. | `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, `error` |
 | `POST /api/chat/{conversationId}/plan/execute/stream` | Anonymous session plan execution stream. Accepts optional `clearContext=true`. | Chat/plan execution events from `ChatController` |
-| `POST /api/plans/{planId}/runs/stream` | Submit saved plan/task-like definition to an agent assignment. | `submitted`, `failed` |
-| `POST /api/tasks/{taskId}/runs/stream` | Submit saved task to an agent assignment. | `submitted`, `failed` |
-| `POST /api/workflows/{workflowId}/runs/stream` | Submit saved workflow to an agent assignment. | `submitted`, `failed` |
+| `POST /api/plans/{planId}/runs/stream` | Submit saved plan/task-like definition to an agent assignment; non-job submissions require `runDisplayName`. | `submitted`, `failed` |
+| `POST /api/tasks/{taskId}/runs/stream` | Submit saved task to an agent assignment; non-job submissions require `runDisplayName`. | `submitted`, `failed` |
+| `POST /api/workflows/{workflowId}/runs/stream` | Submit saved workflow to an agent assignment; non-job submissions require `runDisplayName`. | `submitted`, `failed` |
 | `POST /api/agents/{agentId}/chat/stream` | Agent-scoped side-panel chat. | `start`, `done`, `error` |
 
 Anonymous session plan execution reaches `COMPLETED` only after validator-gated `plan_complete` passes. If completion cannot be verified after retries, the final `done` event carries `planState.status=NEEDS_REVIEW` with review evidence/feedback available through normal history and plan state reloads.
@@ -55,7 +55,7 @@ The public plan/task/workflow stream routes acknowledge durable assignment submi
 - Job execution summaries: [`JobExecutionSummary`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/JobExecutionSummary.java).
 - Workspaces/outputs: [`Workspace`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/Workspace.java), [`WorkspaceLease`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspaceLease.java), [`WorkArea`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkArea.java), [`RunOutputArtifact`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/RunOutputArtifact.java).
 
-Assignment-returning submit routes expose first-class project/effective workspace context. `projectId` selects project workspace execution; `workspaceId` is compatibility metadata. Submit payloads can also carry `selectedWorkAreaId`, `outputRouteType`, `outputWorkAreaId`, `outputDirectRelativePath`, and `runDisplayName` for non-job task/workflow work; plan-chat routes do not accept these controls. During execution, model-facing `outputs/` resolves to run-local staging, and output query routes expose promoted artifact filters for agent, job, job assignment, job run, project, workspace, plan/workflow id, run id, run type, artifact type, and limit.
+Assignment-returning submit routes expose first-class project/effective workspace context. `projectId` selects project workspace execution; `workspaceId` is compatibility metadata. Submit payloads can also carry `selectedWorkAreaId`, `outputRouteType`, `outputWorkAreaId`, `outputDirectRelativePath`, and `runDisplayName`; `runDisplayName` is required for non-job task/workflow work on plan submit/stream, task stream, workflow run/stream, and direct agent assignment routes. `JOB_RUN` submissions may omit route-supplied names because job context owns naming. Plan-chat routes do not accept these controls. During execution, model-facing `outputs/` resolves to run-local staging, and output query routes expose promoted artifact filters for agent, job, job assignment, job run, project, workspace, plan/workflow id, run id, run type, artifact type, and limit.
 
 ## Error Conventions
 

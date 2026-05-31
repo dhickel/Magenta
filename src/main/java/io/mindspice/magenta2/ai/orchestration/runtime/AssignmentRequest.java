@@ -30,6 +30,22 @@ public record AssignmentRequest(
         String jobId,
         String jobItemId,
         AssignmentType assignmentType,
+        String runDisplayName,
+        Integer priority,
+        String modelOverride,
+        String projectId,
+        String workspaceId,
+        Map<String, Object> input
+    ) {
+        this(agentId, jobId, jobItemId, assignmentType, runDisplayName, priority, modelOverride, projectId, workspaceId,
+            null, null, null, null, input);
+    }
+
+    public AssignmentRequest(
+        String agentId,
+        String jobId,
+        String jobItemId,
+        AssignmentType assignmentType,
         Integer priority,
         String modelOverride,
         String projectId,

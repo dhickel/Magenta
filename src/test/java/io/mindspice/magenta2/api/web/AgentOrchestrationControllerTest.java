@@ -175,11 +175,28 @@ class AgentOrchestrationControllerTest {
         );
 
         WorkAssignment result = controller.assign("agent-1", new AgentOrchestrationController.AgentAssignmentCreateRequest(
-            null, null, AssignmentType.TASK_RUN, 0, null, null, null, java.util.Map.of()
+            null, null, AssignmentType.TASK_RUN, 0, null, null, null,
+            null, null, null, null, "Agent task run", java.util.Map.of("taskId", "task-1")
         ));
 
         assertThat(result).isNotNull();
         assertThat(result.agentId()).isEqualTo("agent-1");
+    }
+
+    @Test
+    void assignRejectsMissingRunNameForNonJobTaskAssignment() {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        StubChatService chatService = new StubChatService();
+        AgentOrchestrationController controller = newController(
+            null, new StubAssignmentService(), null, null, profileService, chatService
+        );
+
+        assertThatThrownBy(() -> controller.assign("agent-1", new AgentOrchestrationController.AgentAssignmentCreateRequest(
+            null, null, AssignmentType.TASK_RUN, 0, null, null, null, java.util.Map.of("taskId", "task-1")
+        ))).isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(exception.getReason()).contains("Run name is required for task submissions.");
+        });
     }
 
     @Test

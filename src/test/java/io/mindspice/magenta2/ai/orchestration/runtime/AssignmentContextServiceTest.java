@@ -92,7 +92,7 @@ class AssignmentContextServiceTest {
         Context context = context();
 
         WorkAssignment assignment = context.assignmentService().create(new AssignmentRequest(
-            "agent-1", null, null, AssignmentType.TASK_RUN, 3, null,
+            "agent-1", null, null, AssignmentType.TASK_RUN, "Project task run", 3, null,
             "project-1", null, Map.of("taskId", "task-1")
         ));
 
@@ -104,6 +104,18 @@ class AssignmentContextServiceTest {
         assertThat(context.leaseService().activeWritableLease(assignment.effectiveWorkspaceId())).isEmpty();
         assertThat(context.assignmentService().summary(assignment.id()).effectiveWorkspaceDisplayPath())
             .isEqualTo("projects/project-1");
+    }
+
+    @Test
+    void assignmentCreationRejectsMissingRunDisplayNameForNonJobTaskRun() {
+        Context context = context();
+
+        assertThatThrownBy(() -> context.assignmentService().create(new AssignmentRequest(
+            "agent-1", null, null, AssignmentType.TASK_RUN, 3, null,
+            "project-1", null, Map.of("taskId", "task-1")
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Run name is required for task submissions.");
     }
 
     @Test

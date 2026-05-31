@@ -95,6 +95,8 @@ Assignment records now carry first-class Work Area/output routing metadata:
 
 The metadata is validated at assignment creation. `WORK_AREA` targets must be active Work Areas owned by the same agent/project root. `DIRECT_DIRECTORY` targets must already exist under the owner root and pass the same traversal and symlink confinement policy as Work Areas.
 
+Non-job task and workflow assignments are also validated at assignment creation for a nonblank `runDisplayName`. Legacy rows with null names remain readable, and `JOB_RUN` submissions can continue to rely on job context for user-visible naming.
+
 Operational submit forms use the shared HTMX entity selector for selected Work Area and output Work Area fields. Agent-specific submit panels pass the agent owner context into the selector; broader plan/workflow/job submit panels can search active Work Areas and still rely on assignment creation validation for final ownership checks. Direct output routing remains an existing-directory relative path field.
 
 Runtime alias and output directory resolution consume these columns during task, workflow, and job run allocation:

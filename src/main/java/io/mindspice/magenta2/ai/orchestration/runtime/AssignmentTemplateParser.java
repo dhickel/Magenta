@@ -30,8 +30,18 @@ final class AssignmentTemplateParser {
         if (request.assignmentType() == AssignmentType.TASK_RUN && !StringUtils.hasText(text(input.get("taskId")))) {
             throw new IllegalArgumentException("TASK_RUN assignments require input.taskId");
         }
+        if (request.assignmentType() == AssignmentType.TASK_RUN
+            && !StringUtils.hasText(request.jobId())
+            && !StringUtils.hasText(request.runDisplayName())) {
+            throw new IllegalArgumentException("Run name is required for task submissions.");
+        }
         if (request.assignmentType() == AssignmentType.WORKFLOW_RUN && !StringUtils.hasText(text(input.get("workflowId")))) {
             throw new IllegalArgumentException("WORKFLOW_RUN assignments require input.workflowId");
+        }
+        if (request.assignmentType() == AssignmentType.WORKFLOW_RUN
+            && !StringUtils.hasText(request.jobId())
+            && !StringUtils.hasText(request.runDisplayName())) {
+            throw new IllegalArgumentException("Run name is required for workflow submissions.");
         }
         if (request.assignmentType() == AssignmentType.JOB_RUN
             && !StringUtils.hasText(request.jobId())
@@ -53,10 +63,15 @@ final class AssignmentTemplateParser {
             firstText(text(values.get("jobId")), fallbackJobId),
             text(values.get("jobItemId")),
             assignmentType(values.get("assignmentType"), defaultType),
+            text(values.get("runDisplayName")),
             integer(values.get("priority"), 0),
             text(values.get("modelOverride")),
             text(values.get("projectId")),
             text(values.get("workspaceId")),
+            null,
+            null,
+            null,
+            null,
             input
         );
         validate(request);

@@ -136,7 +136,8 @@ class PublicApiRouteBindingTest {
                 .content(json(Map.of(
                     "agentId", agentId,
                     "projectId", projectId,
-                    "workspaceId", "legacy-workspace-1"
+                    "workspaceId", "legacy-workspace-1",
+                    "runDisplayName", "Route plan run"
                 ))))
             .andExpect(request().asyncStarted())
             .andReturn();
@@ -151,7 +152,7 @@ class PublicApiRouteBindingTest {
 
         Map<String, Object> assignmentRow = jdbcTemplate.queryForMap(
             """
-                select workspace_id, input_json
+                select workspace_id, run_display_name, input_json
                 from work_assignments
                 where assignment_type = 'TASK_RUN'
                   and input_json like ?
@@ -161,7 +162,26 @@ class PublicApiRouteBindingTest {
             "%" + planId + "%"
         );
         assertThat(assignmentRow).containsEntry("workspace_id", "legacy-workspace-1");
+        assertThat(assignmentRow).containsEntry("run_display_name", "Route plan run");
         assertThat((String) assignmentRow.get("input_json")).contains(projectId);
+    }
+
+    @Test
+    void planStreamRouteRejectsMissingRunDisplayName() throws Exception {
+        String agentId = createAgent();
+        String planId = createPlan("Missing Name Plan");
+
+        MvcResult stream = mockMvc.perform(post("/api/plans/" + planId + "/runs/stream")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .content(json(Map.of("agentId", agentId))))
+            .andExpect(request().asyncStarted())
+            .andReturn();
+
+        mockMvc.perform(asyncDispatch(stream))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("event:failed")))
+            .andExpect(content().string(containsString("Run name is required for task submissions.")));
     }
 
     @Test
@@ -320,6 +340,21 @@ class PublicApiRouteBindingTest {
         mockMvc.perform(get("/api/agents/" + otherAgentId + "/assignments"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void agentAssignmentRouteRejectsMissingTaskRunDisplayName() throws Exception {
+        String agentId = createAgent();
+
+        mockMvc.perform(post("/api/agents/" + agentId + "/assignments")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of(
+                    "assignmentType", "TASK_RUN",
+                    "priority", 1,
+                    "input", Map.of("taskId", "task-1")
+                ))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error", containsString("Run name is required for task submissions.")));
     }
 
     private String createAgent() throws Exception {
