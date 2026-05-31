@@ -1,0 +1,3 @@
+7. [GET] http://localhost:18080/api/chat/sessions => [200] 
+
+Note: 6 static requests not shown, run with "static" option to see them.

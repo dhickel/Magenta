@@ -1,0 +1,295 @@
+{
+  "startedAt": "2026-05-31T08:11:22.930Z",
+  "finishedAt": "2026-05-31T08:11:29.891Z",
+  "location": "http://localhost:18080/chat",
+  "dom": {
+    "title": "Magenta Chat",
+    "chatRoot": true,
+    "form": true,
+    "input": true,
+    "modelSelect": true,
+    "planningModelSelect": true,
+    "history": true,
+    "planningPanel": true,
+    "activeSessionText": "New chat"
+  },
+  "model": "phase07-browser-stub",
+  "interruptStream": {
+    "httpStatus": 200,
+    "startEvent": {
+      "event": "start",
+      "raw": "event:start\ndata:{\"conversationId\":\"912af9d1-8177-479b-adaa-a3722eba3c34\",\"model\":\"phase07-browser-stub\",\"turnId\":\"60fcf40c-6fea-416f-9e42-a6fe6c91887e\",\"interruptToken\":\"w0JdTRBQZXvq9ujLl4VAFYwsiJyB_M9f\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "dataText": "{\"conversationId\":\"912af9d1-8177-479b-adaa-a3722eba3c34\",\"model\":\"phase07-browser-stub\",\"turnId\":\"60fcf40c-6fea-416f-9e42-a6fe6c91887e\",\"interruptToken\":\"w0JdTRBQZXvq9ujLl4VAFYwsiJyB_M9f\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "data": {
+        "conversationId": "912af9d1-8177-479b-adaa-a3722eba3c34",
+        "model": "phase07-browser-stub",
+        "turnId": "60fcf40c-6fea-416f-9e42-a6fe6c91887e",
+        "interruptToken": "w0JdTRBQZXvq9ujLl4VAFYwsiJyB_M9f",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "turn": {
+      "conversationId": "912af9d1-8177-479b-adaa-a3722eba3c34",
+      "turnId": "60fcf40c-6fea-416f-9e42-a6fe6c91887e",
+      "interruptToken": "w0JdTRBQZXvq9ujLl4VAFYwsiJyB_M9f"
+    },
+    "hasTurnId": true,
+    "hasInterruptToken": true,
+    "interruptAttempts": [
+      {
+        "httpStatus": 200,
+        "ok": true,
+        "body": {
+          "status": "ACCEPTED"
+        }
+      }
+    ],
+    "acceptedAttempt": {
+      "httpStatus": 200,
+      "ok": true,
+      "body": {
+        "status": "ACCEPTED"
+      }
+    },
+    "terminalEvents": [
+      {
+        "event": "error",
+        "data": {
+          "message": "Thread interrupted while sleeping"
+        }
+      }
+    ]
+  },
+  "postInterruptStream": {
+    "httpStatus": 200,
+    "startEvent": {
+      "event": "start",
+      "raw": "event:start\ndata:{\"conversationId\":\"912af9d1-8177-479b-adaa-a3722eba3c34\",\"model\":\"phase07-browser-stub\",\"turnId\":\"61c07bef-d1b2-4147-bd53-a4a6689ae521\",\"interruptToken\":\"1RWWbxfUYOHRgw0oMmC1xFKtd2PG4oTV\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "dataText": "{\"conversationId\":\"912af9d1-8177-479b-adaa-a3722eba3c34\",\"model\":\"phase07-browser-stub\",\"turnId\":\"61c07bef-d1b2-4147-bd53-a4a6689ae521\",\"interruptToken\":\"1RWWbxfUYOHRgw0oMmC1xFKtd2PG4oTV\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "data": {
+        "conversationId": "912af9d1-8177-479b-adaa-a3722eba3c34",
+        "model": "phase07-browser-stub",
+        "turnId": "61c07bef-d1b2-4147-bd53-a4a6689ae521",
+        "interruptToken": "1RWWbxfUYOHRgw0oMmC1xFKtd2PG4oTV",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "terminalEvents": [
+      {
+        "event": "done",
+        "data": {
+          "conversationId": "912af9d1-8177-479b-adaa-a3722eba3c34",
+          "model": "phase07-browser-stub",
+          "text": "phase07 browser stub completion 1",
+          "renderedHtml": "<p>phase07 browser stub completion 1</p>\n",
+          "contextUsage": {
+            "usedTokens": 1123,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 3.509375
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      }
+    ],
+    "staleConflict": false
+  },
+  "abortStream": {
+    "startEvent": {
+      "event": "start",
+      "raw": "event:start\ndata:{\"conversationId\":\"912af9d1-8177-479b-adaa-a3722eba3c34\",\"model\":\"phase07-browser-stub\",\"turnId\":\"7cd48597-db53-4f2b-a906-eb7b10fe1a3f\",\"interruptToken\":\"AGq0CVslmBSrVtrh5o6StWRuurLsFMOV\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "dataText": "{\"conversationId\":\"912af9d1-8177-479b-adaa-a3722eba3c34\",\"model\":\"phase07-browser-stub\",\"turnId\":\"7cd48597-db53-4f2b-a906-eb7b10fe1a3f\",\"interruptToken\":\"AGq0CVslmBSrVtrh5o6StWRuurLsFMOV\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "data": {
+        "conversationId": "912af9d1-8177-479b-adaa-a3722eba3c34",
+        "model": "phase07-browser-stub",
+        "turnId": "7cd48597-db53-4f2b-a906-eb7b10fe1a3f",
+        "interruptToken": "AGq0CVslmBSrVtrh5o6StWRuurLsFMOV",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "abortReadOutcome": {
+      "error": "AbortError: BodyStreamBuffer was aborted",
+      "name": "AbortError"
+    }
+  },
+  "postAbortStream": {
+    "httpStatus": 200,
+    "startEvent": {
+      "event": "start",
+      "raw": "event:start\ndata:{\"conversationId\":\"912af9d1-8177-479b-adaa-a3722eba3c34\",\"model\":\"phase07-browser-stub\",\"turnId\":\"34f2fbe4-d99b-4384-a45f-d5e046b78e4c\",\"interruptToken\":\"FBJ_MYMhelEYS3gqkJgxdPz93Fso81u9\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "dataText": "{\"conversationId\":\"912af9d1-8177-479b-adaa-a3722eba3c34\",\"model\":\"phase07-browser-stub\",\"turnId\":\"34f2fbe4-d99b-4384-a45f-d5e046b78e4c\",\"interruptToken\":\"FBJ_MYMhelEYS3gqkJgxdPz93Fso81u9\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "data": {
+        "conversationId": "912af9d1-8177-479b-adaa-a3722eba3c34",
+        "model": "phase07-browser-stub",
+        "turnId": "34f2fbe4-d99b-4384-a45f-d5e046b78e4c",
+        "interruptToken": "FBJ_MYMhelEYS3gqkJgxdPz93Fso81u9",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "terminalEvents": [
+      {
+        "event": "error",
+        "data": {
+          "message": "Another stream is already active for conversation 912af9d1-8177-479b-adaa-a3722eba3c34"
+        }
+      }
+    ],
+    "staleConflict": true
+  },
+  "history": {
+    "httpStatus": 200,
+    "conversationId": "912af9d1-8177-479b-adaa-a3722eba3c34",
+    "messageCount": 3,
+    "planState": {
+      "mode": "NORMAL",
+      "status": null,
+      "planningTask": null,
+      "title": null,
+      "summary": null,
+      "goal": null,
+      "notes": null,
+      "deliverables": [],
+      "inputs": [],
+      "outputs": [],
+      "assumptions": [],
+      "steps": [],
+      "acceptanceCriteria": [],
+      "executionEvidence": [],
+      "validationFeedback": [],
+      "promptType": null,
+      "promptQuestion": null,
+      "promptOptions": [],
+      "promptQuestionIndex": 0,
+      "promptQuestionCount": 0,
+      "approvalMarkdown": null,
+      "approvalHtml": null,
+      "documentMarkdown": null,
+      "documentHtml": null
+    }
+  }
+}

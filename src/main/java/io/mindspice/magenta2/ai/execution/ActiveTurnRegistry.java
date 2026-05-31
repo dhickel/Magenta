@@ -48,6 +48,17 @@ public class ActiveTurnRegistry {
         }
     }
 
+    public void cancel(String turnId) {
+        if (StringUtils.hasText(turnId)) {
+            ActiveTurn turn = activeTurns.remove(turnId);
+            activePlanExecutionsByConversationId.values().remove(turnId);
+            if (turn != null) {
+                turn.cancel();
+                turn.interruptWorker();
+            }
+        }
+    }
+
     public InterruptResult interrupt(String turnId, String conversationId, String token, String message) {
         ActiveTurn turn = activeTurns.get(turnId);
         if (turn == null || !turn.conversationId().equals(conversationId)) {
@@ -88,6 +99,8 @@ public class ActiveTurnRegistry {
         private final Deque<String> interrupts = new ArrayDeque<>();
         private ActiveTurnPhase phase = ActiveTurnPhase.MODEL_CALL;
         private boolean acceptsInterrupts;
+        private Thread workerThread;
+        private boolean cancelled;
 
         private ActiveTurn(String turnId, String token, String conversationId) {
             this.turnId = turnId;
@@ -119,7 +132,34 @@ public class ActiveTurnRegistry {
                 return InterruptResult.queuedAfterTurn();
             }
             interrupts.addLast(message.trim());
+            if (phase == ActiveTurnPhase.MODEL_CALL && workerThread != null) {
+                workerThread.interrupt();
+            }
             return InterruptResult.accepted();
+        }
+
+        public synchronized void workerThread(Thread thread) {
+            this.workerThread = thread;
+        }
+
+        public synchronized void clearWorkerThread(Thread thread) {
+            if (workerThread == thread) {
+                workerThread = null;
+            }
+        }
+
+        public synchronized void interruptWorker() {
+            if (workerThread != null) {
+                workerThread.interrupt();
+            }
+        }
+
+        private synchronized void cancel() {
+            cancelled = true;
+        }
+
+        public synchronized boolean cancelled() {
+            return cancelled;
         }
 
         public synchronized Optional<String> pollInterrupt() {

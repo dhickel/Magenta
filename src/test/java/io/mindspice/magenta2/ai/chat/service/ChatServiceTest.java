@@ -6,6 +6,11 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -29,6 +34,9 @@ import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.EndpointType;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
+import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
+import io.mindspice.magenta2.ai.execution.ConversationTurnCoordinator;
+import io.mindspice.magenta2.ai.execution.InterruptStatus;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
@@ -60,6 +68,7 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.web.client.RestClientException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -161,6 +170,280 @@ class ChatServiceTest {
         chatService.clearConversation("conversation-1");
 
         assertThat(pendingMessageService.list("conversation-1")).isEmpty();
+    }
+
+    @Test
+    void plainStreamingModelCallAcceptsAdvertisedInterruptAndInterruptsWorker() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        InterruptibleChatModel chatModel = new InterruptibleChatModel();
+        ChatModelRouter router = new TestChatModelRouter(chatModel);
+        AiConfig config = aiConfig();
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            new ToolTranscriptService(objectMapper),
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            null,
+            null,
+            null,
+            null
+        );
+        ActiveTurnRegistry registry = new ActiveTurnRegistry();
+        ActiveTurnRegistry.ActiveTurn activeTurn = registry.register("conversation-plain");
+
+        CompletableFuture<List<io.mindspice.magenta2.ai.chat.model.ChatMessage>> stream = CompletableFuture.supplyAsync(() ->
+            chatService.stream(new ResolvedChatRequest("conversation-plain", "hello", "main"), activeTurn)
+                .collectList()
+                .block()
+        );
+        assertThat(chatModel.entered.await(1, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(registry.interrupt(
+            activeTurn.turnId(),
+            "conversation-plain",
+            activeTurn.token(),
+            "stop now"
+        ).status()).isEqualTo(InterruptStatus.ACCEPTED);
+
+        assertThat(stream.get(2, TimeUnit.SECONDS))
+            .extracting(io.mindspice.magenta2.ai.chat.model.ChatMessage::text)
+            .containsExactly("interrupted");
+        assertThat(activeTurn.pollInterrupt()).contains("stop now");
+    }
+
+    @Test
+    void toolUnsupportedFallbackToPlainStreamingUsesSameInterruptContract() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        ToolUnsupportedThenInterruptibleChatModel chatModel = new ToolUnsupportedThenInterruptibleChatModel();
+        ChatModelRouter router = new TestChatModelRouter(chatModel);
+        AiConfig config = aiConfig(Path.of("."), List.of("sample_tool"));
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            transcriptService,
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            mock(ToolCallingManager.class),
+            new ChatToolRegistry(List.of(new SampleToolCallback()), List.of()),
+            transcriptService,
+            null
+        );
+        ActiveTurnRegistry registry = new ActiveTurnRegistry();
+        ActiveTurnRegistry.ActiveTurn activeTurn = registry.register("conversation-fallback");
+
+        CompletableFuture<List<io.mindspice.magenta2.ai.chat.model.ChatMessage>> stream = CompletableFuture.supplyAsync(() ->
+            chatService.stream(new ResolvedChatRequest("conversation-fallback", "use the tool", "main"), activeTurn)
+                .collectList()
+                .block()
+        );
+        assertThat(chatModel.plainFallbackEntered.await(1, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(registry.interrupt(
+            activeTurn.turnId(),
+            "conversation-fallback",
+            activeTurn.token(),
+            "stop fallback"
+        ).status()).isEqualTo(InterruptStatus.ACCEPTED);
+
+        assertThat(stream.get(2, TimeUnit.SECONDS))
+            .extracting(io.mindspice.magenta2.ai.chat.model.ChatMessage::text)
+            .containsExactly("fallback interrupted");
+        assertThat(chatModel.calls.get()).isEqualTo(2);
+    }
+
+    @Test
+    void abandonedStreamReleasesOwnedConversationLockBeforeProviderUnwinds() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        BlockingChatModel chatModel = new BlockingChatModel();
+        ChatModelRouter router = new TestChatModelRouter(chatModel);
+        AiConfig config = aiConfig();
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            new ToolTranscriptService(objectMapper),
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            mock(ConversationTurnCoordinator.class),
+            null,
+            objectMapper,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+        ActiveTurnRegistry registry = new ActiveTurnRegistry();
+        String conversationId = "conversation-abandoned-stream";
+        ResolvedChatRequest request = new ResolvedChatRequest(conversationId, "hello", "main");
+        ActiveTurnRegistry.ActiveTurn firstTurn = registry.register(conversationId);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            CompletableFuture<List<io.mindspice.magenta2.ai.chat.model.ChatMessage>> firstStream =
+                CompletableFuture.supplyAsync(() -> chatService.stream(request, firstTurn).collectList().block(), executor);
+            assertThat(awaitCalls(chatModel, 1)).isTrue();
+
+            ActiveTurnRegistry.ActiveTurn blockedTurn = registry.register(conversationId);
+            assertThatThrownBy(() -> chatService.stream(request, blockedTurn).collectList().block())
+                .hasMessageContaining("Another stream is already active");
+
+            chatService.abandonStream(conversationId, blockedTurn.turnId());
+            assertThatThrownBy(() -> chatService.stream(request, registry.register(conversationId)).collectList().block())
+                .hasMessageContaining("Another stream is already active");
+
+            chatService.abandonStream(conversationId, firstTurn.turnId());
+            registry.cancel(firstTurn.turnId());
+            ActiveTurnRegistry.ActiveTurn retryTurn = registry.register(conversationId);
+            CompletableFuture<List<io.mindspice.magenta2.ai.chat.model.ChatMessage>> retryStream =
+                CompletableFuture.supplyAsync(() -> chatService.stream(request, retryTurn).collectList().block(), executor);
+
+            assertThat(chatModel.secondEntered.await(2, TimeUnit.SECONDS)).isTrue();
+            chatModel.releaseSecond();
+
+            assertThat(retryStream.get(2, TimeUnit.SECONDS))
+                .extracting(io.mindspice.magenta2.ai.chat.model.ChatMessage::text)
+                .containsExactly("released 2");
+            assertThatThrownBy(() -> firstStream.get(2, TimeUnit.SECONDS))
+                .hasCauseInstanceOf(java.util.concurrent.CancellationException.class);
+            assertThat(chatService.history(conversationId))
+                .extracting(io.mindspice.magenta2.ai.chat.model.ChatMessage::text)
+                .doesNotContain("released 1");
+        } finally {
+            chatModel.releaseFirst();
+            chatModel.releaseSecond();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void longActiveStreamRemainsExclusiveBeyondPreviousTakeoverThreshold() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        BlockingChatModel chatModel = new BlockingChatModel();
+        ChatModelRouter router = new TestChatModelRouter(chatModel);
+        AiConfig config = aiConfig();
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            new ToolTranscriptService(objectMapper),
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            mock(ConversationTurnCoordinator.class),
+            null,
+            objectMapper,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+        ActiveTurnRegistry registry = new ActiveTurnRegistry();
+        String conversationId = "conversation-long-active-stream";
+        ResolvedChatRequest request = new ResolvedChatRequest(conversationId, "hello", "main");
+        ActiveTurnRegistry.ActiveTurn firstTurn = registry.register(conversationId);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            CompletableFuture<List<io.mindspice.magenta2.ai.chat.model.ChatMessage>> firstStream =
+                CompletableFuture.supplyAsync(() -> chatService.stream(request, firstTurn).collectList().block(), executor);
+            assertThat(awaitCalls(chatModel, 1)).isTrue();
+
+            assertThatThrownBy(() -> chatService.stream(request, registry.register(conversationId)).collectList().block())
+                .hasMessageContaining("Another stream is already active");
+
+            Thread.sleep(600);
+            assertThatThrownBy(() -> chatService.stream(request, registry.register(conversationId)).collectList().block())
+                .hasMessageContaining("Another stream is already active");
+            assertThat(chatModel.calls.get()).isEqualTo(1);
+
+            chatModel.releaseFirst();
+            assertThat(firstStream.get(2, TimeUnit.SECONDS))
+                .extracting(io.mindspice.magenta2.ai.chat.model.ChatMessage::text)
+                .containsExactly("released 1");
+        } finally {
+            chatModel.releaseFirst();
+            chatModel.releaseSecond();
+            executor.shutdownNow();
+        }
     }
 
     @Test
@@ -1010,6 +1293,17 @@ class ChatServiceTest {
         );
     }
 
+    private boolean awaitCalls(BlockingChatModel chatModel, int expectedCalls) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (System.nanoTime() < deadline) {
+            if (chatModel.calls.get() >= expectedCalls) {
+                return true;
+            }
+            Thread.sleep(10);
+        }
+        return chatModel.calls.get() >= expectedCalls;
+    }
+
     private static final class MalformedThenFinalChatModel implements ChatModel {
         private final AtomicInteger calls = new AtomicInteger();
         private final List<String> prompts = new java.util.ArrayList<>();
@@ -1208,6 +1502,86 @@ class ChatServiceTest {
             return new org.springframework.ai.chat.model.ChatResponse(List.of(
                 new Generation(new AssistantMessage(response))
             ));
+        }
+    }
+
+    private static final class InterruptibleChatModel implements ChatModel {
+        private final CountDownLatch entered = new CountDownLatch(1);
+
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            entered.countDown();
+            try {
+                Thread.sleep(5_000);
+                return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                    new Generation(new AssistantMessage("not interrupted"))
+                ));
+            } catch (InterruptedException exception) {
+                return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                    new Generation(new AssistantMessage("interrupted"))
+                ));
+            }
+        }
+    }
+
+    private static final class BlockingChatModel implements ChatModel {
+        private final AtomicInteger calls = new AtomicInteger();
+        private final CountDownLatch firstEntered = new CountDownLatch(1);
+        private final CountDownLatch secondEntered = new CountDownLatch(1);
+        private final CountDownLatch releaseFirst = new CountDownLatch(1);
+        private final CountDownLatch releaseSecond = new CountDownLatch(1);
+
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            int call = calls.incrementAndGet();
+            if (call == 1) {
+                firstEntered.countDown();
+            } else if (call == 2) {
+                secondEntered.countDown();
+            }
+            try {
+                if (call == 1) {
+                    releaseFirst.await(5, TimeUnit.SECONDS);
+                } else {
+                    releaseSecond.await(5, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                new Generation(new AssistantMessage("released " + call))
+            ));
+        }
+
+        private void releaseFirst() {
+            releaseFirst.countDown();
+        }
+
+        private void releaseSecond() {
+            releaseSecond.countDown();
+        }
+    }
+
+    private static final class ToolUnsupportedThenInterruptibleChatModel implements ChatModel {
+        private final AtomicInteger calls = new AtomicInteger();
+        private final CountDownLatch plainFallbackEntered = new CountDownLatch(1);
+
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            if (calls.getAndIncrement() == 0) {
+                throw new NonTransientAiException("qwen3 does not support tools");
+            }
+            plainFallbackEntered.countDown();
+            try {
+                Thread.sleep(5_000);
+                return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                    new Generation(new AssistantMessage("fallback not interrupted"))
+                ));
+            } catch (InterruptedException exception) {
+                return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                    new Generation(new AssistantMessage("fallback interrupted"))
+                ));
+            }
         }
     }
 

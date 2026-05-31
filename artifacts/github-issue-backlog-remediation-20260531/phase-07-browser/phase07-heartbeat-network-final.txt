@@ -1,0 +1,11 @@
+7. [GET] http://localhost:18080/api/chat/sessions => [200] 
+8. [POST] http://localhost:18080/api/chat/stream => [200] 
+9. [POST] http://localhost:18080/api/chat/turns/7f496530-ae0f-45e0-8062-6b2b91d98af7/interrupt => [200] 
+10. [POST] http://localhost:18080/api/chat/stream => [200] 
+11. [POST] http://localhost:18080/api/chat/stream => [200] 
+12. [POST] http://localhost:18080/api/chat/stream => [200] 
+13. [POST] http://localhost:18080/api/chat/stream => [200] 
+14. [POST] http://localhost:18080/api/chat/stream => [200] 
+15. [POST] http://localhost:18080/api/chat/stream => [200] 
+
+Note: 6 static requests not shown, run with "static" option to see them.

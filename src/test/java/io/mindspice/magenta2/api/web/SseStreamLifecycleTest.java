@@ -2,7 +2,9 @@ package io.mindspice.magenta2.api.web;
 
 import java.io.IOException;
 import java.lang.reflect.Proxy;
-import java.util.Set;
+import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -219,6 +221,24 @@ class SseStreamLifecycleTest {
         emitter.complete();
 
         assertThat(SseStreamLifecycle.trySendSseEvent(emitter, "test", "data")).isFalse();
+    }
+
+    @Test
+    void heartbeatInvokesFailureCallbackWhenTransportRejectsSend() throws Exception {
+        SseEmitter emitter = SseStreamLifecycle.createEmitter();
+        initializeEmitterWithFailingSend(emitter);
+        CountDownLatch failed = new CountDownLatch(1);
+
+        Disposable heartbeat = SseStreamLifecycle.startHeartbeat(
+            emitter,
+            Duration.ofMillis(10),
+            failed::countDown
+        );
+        try {
+            assertThat(failed.await(1, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            heartbeat.dispose();
+        }
     }
 
     // ── Fake Disposable for testing ──────────────────────────────────

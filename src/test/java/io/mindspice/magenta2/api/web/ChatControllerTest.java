@@ -1,10 +1,12 @@
 package io.mindspice.magenta2.api.web;
 
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
@@ -23,6 +25,8 @@ import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.service.StoredContextUsage;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
+import io.mindspice.magenta2.ai.execution.ActiveTurnPhase;
+import io.mindspice.magenta2.ai.execution.InterruptStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -399,6 +403,90 @@ class ChatControllerTest {
     }
 
     @Test
+    void streamPlanExecutionOnErrorCleansActiveTurnAndPlanRegistrationWithoutFailureFinalization() throws Exception {
+        CapturingNeverStreamChatService streamChatService = new CapturingNeverStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ActiveTurnRegistry turnRegistry = new ActiveTurnRegistry();
+        ChatController controller = new ChatController(streamChatService, turnRegistry);
+
+        SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID, null);
+        assertThat(streamChatService.activeTurnRegistered.await(1, TimeUnit.SECONDS)).isTrue();
+
+        triggerEmitterError(emitter, new IllegalStateException("client disconnected"));
+
+        assertThat(turnRegistry.find(streamChatService.activeTurn.turnId())).isEmpty();
+        ActiveTurn replacement = turnRegistry.registerPlanExecution(CONVERSATION_ID);
+        assertThat(replacement).isNotNull();
+        turnRegistry.complete(replacement.turnId());
+        assertThat(streamChatService.recordedExecutionFailures).isZero();
+    }
+
+    @Test
+    void plainStreamInterruptEndpointMatchesAdvertisedTokenDuringModelCall() throws Exception {
+        CapturingNeverStreamChatService streamChatService = new CapturingNeverStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ActiveTurnRegistry turnRegistry = new ActiveTurnRegistry();
+        ChatController controller = new ChatController(streamChatService, turnRegistry);
+
+        SseEmitter emitter = controller.stream(
+            new ChatRequest.MsgRequest(CONVERSATION_ID, "hello", "qwen3", null)
+        );
+        assertThat(streamChatService.activeTurnRegistered.await(1, TimeUnit.SECONDS)).isTrue();
+
+        var interrupt = controller.interrupt(
+            streamChatService.activeTurn.turnId(),
+            new ChatRequest.TurnInterrupt(CONVERSATION_ID, streamChatService.activeTurn.token(), "stop")
+        );
+
+        assertThat(interrupt.status()).isEqualTo(InterruptStatus.ACCEPTED);
+        triggerEmitterError(emitter, new IllegalStateException("client disconnected"));
+    }
+
+    @Test
+    void streamEmitterOnErrorCancelsActiveModelWorker() throws Exception {
+        InterruptibleNeverStreamChatService streamChatService = new InterruptibleNeverStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ActiveTurnRegistry turnRegistry = new ActiveTurnRegistry();
+        ChatController controller = new ChatController(streamChatService, turnRegistry);
+
+        SseEmitter emitter = controller.stream(
+            new ChatRequest.MsgRequest(CONVERSATION_ID, "hello", "qwen3", null)
+        );
+        assertThat(streamChatService.activeTurnRegistered.await(1, TimeUnit.SECONDS)).isTrue();
+
+        triggerEmitterError(emitter, new IllegalStateException("client disconnected"));
+
+        assertThat(streamChatService.workerInterrupted.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(turnRegistry.find(streamChatService.activeTurn.turnId())).isEmpty();
+    }
+
+    @Test
+    void streamEmitterTransportCompletionCancelsActiveModelWorker() throws Exception {
+        InterruptibleNeverStreamChatService streamChatService = new InterruptibleNeverStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ActiveTurnRegistry turnRegistry = new ActiveTurnRegistry();
+        ChatController controller = new ChatController(streamChatService, turnRegistry);
+
+        SseEmitter emitter = controller.stream(
+            new ChatRequest.MsgRequest(CONVERSATION_ID, "hello", "qwen3", null)
+        );
+        assertThat(streamChatService.activeTurnRegistered.await(1, TimeUnit.SECONDS)).isTrue();
+
+        triggerEmitterCompletion(emitter);
+
+        assertThat(streamChatService.workerInterrupted.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(turnRegistry.find(streamChatService.activeTurn.turnId())).isEmpty();
+    }
+
+    @Test
     void pendingMessageEndpointsEnqueueListClaimAckAndRelease() {
         ChatController controller = new ChatController(
             chatService,
@@ -470,6 +558,21 @@ class ChatControllerTest {
         return new ChatPendingMessageService(new ChatPendingMessageRepository(new JdbcTemplate(dataSource)));
     }
 
+    @SuppressWarnings("unchecked")
+    private void triggerEmitterError(SseEmitter emitter, Throwable error) throws Exception {
+        Field errorCallbackField = org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.class
+            .getDeclaredField("errorCallback");
+        errorCallbackField.setAccessible(true);
+        ((Consumer<Throwable>) errorCallbackField.get(emitter)).accept(error);
+    }
+
+    private void triggerEmitterCompletion(SseEmitter emitter) throws Exception {
+        Field completionCallbackField = org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.class
+            .getDeclaredField("completionCallback");
+        completionCallbackField.setAccessible(true);
+        ((Runnable) completionCallbackField.get(emitter)).run();
+    }
+
     private static class StubChatService extends ChatService {
         private final List<String> conversationIds;
         private final Map<String, String> modelsByConversationId;
@@ -484,6 +587,7 @@ class ChatControllerTest {
         private String initialPlanningInstruction;
         private boolean favorite;
         private boolean archived;
+        int recordedExecutionFailures;
         private List<ChatMessage> historyMessages = List.of();
         private StoredContextUsage contextUsage;
 
@@ -694,6 +798,11 @@ class ChatControllerTest {
                 List.of("Evidence: stream finished")
             );
         }
+
+        @Override
+        public void recordExecutionFailure(String conversationId, RuntimeException exception) {
+            recordedExecutionFailures++;
+        }
     }
 
     private static class BlockingStreamChatService extends StubChatService {
@@ -792,8 +901,59 @@ class ChatControllerTest {
 
         @Override
         public void recordExecutionFailure(String conversationId, RuntimeException exception) {
+            super.recordExecutionFailure(conversationId, exception);
             executionFailureMessage = exception.getMessage();
             failureRecorded.countDown();
+        }
+    }
+
+    private static class CapturingNeverStreamChatService extends StubChatService {
+        protected final CountDownLatch activeTurnRegistered = new CountDownLatch(1);
+        protected volatile ActiveTurn activeTurn;
+
+        CapturingNeverStreamChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
+            super(conversationIds, modelsByConversationId);
+        }
+
+        @Override
+        public ResolvedChatRequest resolve(ChatRequest request) {
+            return new ResolvedChatRequest(CONVERSATION_ID, "hello", "qwen3");
+        }
+
+        @Override
+        public Flux<ChatMessage> stream(ResolvedChatRequest request, ActiveTurn activeTurn) {
+            this.activeTurn = activeTurn;
+            activeTurn.phase(ActiveTurnPhase.MODEL_CALL);
+            activeTurnRegistered.countDown();
+            return Flux.never();
+        }
+    }
+
+    private static class InterruptibleNeverStreamChatService extends CapturingNeverStreamChatService {
+        private final CountDownLatch workerInterrupted = new CountDownLatch(1);
+
+        InterruptibleNeverStreamChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
+            super(conversationIds, modelsByConversationId);
+        }
+
+        @Override
+        public Flux<ChatMessage> stream(ResolvedChatRequest request, ActiveTurn activeTurn) {
+            this.activeTurn = activeTurn;
+            activeTurn.phase(ActiveTurnPhase.MODEL_CALL);
+            return Flux.create(sink -> {
+                activeTurn.workerThread(Thread.currentThread());
+                activeTurnRegistered.countDown();
+                try {
+                    Thread.sleep(5_000);
+                    sink.complete();
+                } catch (InterruptedException exception) {
+                    workerInterrupted.countDown();
+                    Thread.currentThread().interrupt();
+                    sink.error(exception);
+                } finally {
+                    activeTurn.clearWorkerThread(Thread.currentThread());
+                }
+            });
         }
     }
 }

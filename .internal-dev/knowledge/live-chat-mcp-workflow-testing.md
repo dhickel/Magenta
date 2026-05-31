@@ -85,6 +85,7 @@ Observed MCP-run gotchas:
 - Agent detail orchestration tabs render through one dynamic `#agent-tab-panel`; do not expect separate persistent DOM nodes for inbox, queue, schedules, reactions, workspace, or history panels.
 - A 2026-05-08 third-pass validation used an isolated Chromium DevTools Protocol fallback after Playwright MCP hit the `mcp-chrome-4e05678` profile lock. For SSE lifecycle tests, read incrementally from `response.body.getReader()` and return as soon as the target first event arrives. For task/workflow transport checks, abort intentionally after `started`, then inspect server logs for `onErrorDropped`, `ResponseBodyEmitter has already completed`, `broken pipe`, and `AsyncRequestNotUsableException`.
 - If local model services are unavailable, run browser transport validation against a deterministic local OpenAI-compatible stub and point an isolated AI config at it. This keeps `/chat` and side-panel SSE browser contracts testable without depending on Ollama availability or model latency.
+- A 2026-05-31 Phase 07 browser validation found that aborting `/api/chat/stream` immediately after the `start` event may not trigger servlet `onError`/`onCompletion` before the next server write. Focused abort/retry probes should keep the provider response delayed and verify the SSE heartbeat/write-probe path releases the owning stream lock in the 0.5-1.5s retry window. Also verify the old abandoned owner cannot persist a late assistant message if the provider returns after cancellation.
 
 # Engine Relevance
 

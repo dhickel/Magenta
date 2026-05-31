@@ -1,0 +1,651 @@
+{
+  "startedAt": "2026-05-31T08:30:56.104Z",
+  "finishedAt": "2026-05-31T08:31:05.987Z",
+  "location": "http://localhost:18080/chat",
+  "model": "phase07-browser-stub",
+  "dom": {
+    "title": "Magenta Chat",
+    "chatRoot": true,
+    "form": true,
+    "input": true,
+    "modelSelect": true,
+    "planningModelSelect": true,
+    "history": true,
+    "planningPanel": true,
+    "activeSessionText": "New chat"
+  },
+  "interruptStream": {
+    "httpStatus": 200,
+    "startEvent": {
+      "event": "start",
+      "raw": "event:start\ndata:{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"turnId\":\"145232e9-e79b-4af0-87e6-69868fc02f6b\",\"interruptToken\":\"_1ltsarpzhc45pCSD1s0z-xOVXBwXLim\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "dataText": "{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"turnId\":\"145232e9-e79b-4af0-87e6-69868fc02f6b\",\"interruptToken\":\"_1ltsarpzhc45pCSD1s0z-xOVXBwXLim\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "data": {
+        "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+        "model": "phase07-browser-stub",
+        "turnId": "145232e9-e79b-4af0-87e6-69868fc02f6b",
+        "interruptToken": "_1ltsarpzhc45pCSD1s0z-xOVXBwXLim",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "turn": {
+      "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+      "turnId": "145232e9-e79b-4af0-87e6-69868fc02f6b",
+      "interruptToken": "_1ltsarpzhc45pCSD1s0z-xOVXBwXLim"
+    },
+    "hasTurnId": true,
+    "hasInterruptToken": true,
+    "interruptAttempts": [
+      {
+        "httpStatus": 400,
+        "ok": false,
+        "body": {
+          "error": "validation failed",
+          "fieldErrors": [
+            {
+              "field": "conversationId",
+              "message": "must not be blank"
+            },
+            {
+              "field": "message",
+              "message": "must not be blank"
+            }
+          ]
+        }
+      }
+    ],
+    "acceptedAttempt": null,
+    "terminalEvents": [
+      {
+        "event": "done",
+        "raw": "event:done\ndata:{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"text\":\"phase07 browser stub completion 3\",\"renderedHtml\":\"<p>phase07 browser stub completion 3</p>\\n\",\"contextUsage\":{\"usedTokens\":1130,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.53125},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"text\":\"phase07 browser stub completion 3\",\"renderedHtml\":\"<p>phase07 browser stub completion 3</p>\\n\",\"contextUsage\":{\"usedTokens\":1130,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.53125},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+          "model": "phase07-browser-stub",
+          "text": "phase07 browser stub completion 3",
+          "renderedHtml": "<p>phase07 browser stub completion 3</p>\n",
+          "contextUsage": {
+            "usedTokens": 1130,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 3.53125
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      }
+    ],
+    "allEventsAfterStart": [
+      {
+        "event": "context",
+        "raw": "event:context\ndata:{\"contextUsage\":{\"usedTokens\":1130,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.53125},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"contextUsage\":{\"usedTokens\":1130,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.53125},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "contextUsage": {
+            "usedTokens": 1130,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 3.53125
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "chunk",
+        "raw": "event:chunk\ndata:{\"text\":\"phase07 browser stub completion 3\",\"renderedHtml\":\"<p>phase07 browser stub completion 3</p>\\n\",\"thinkingHtml\":null,\"contextUsage\":{\"usedTokens\":1130,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.53125},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"text\":\"phase07 browser stub completion 3\",\"renderedHtml\":\"<p>phase07 browser stub completion 3</p>\\n\",\"thinkingHtml\":null,\"contextUsage\":{\"usedTokens\":1130,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.53125},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "text": "phase07 browser stub completion 3",
+          "renderedHtml": "<p>phase07 browser stub completion 3</p>\n",
+          "thinkingHtml": null,
+          "contextUsage": {
+            "usedTokens": 1130,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 3.53125
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "done",
+        "raw": "event:done\ndata:{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"text\":\"phase07 browser stub completion 3\",\"renderedHtml\":\"<p>phase07 browser stub completion 3</p>\\n\",\"contextUsage\":{\"usedTokens\":1130,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.53125},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"text\":\"phase07 browser stub completion 3\",\"renderedHtml\":\"<p>phase07 browser stub completion 3</p>\\n\",\"contextUsage\":{\"usedTokens\":1130,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.53125},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+          "model": "phase07-browser-stub",
+          "text": "phase07 browser stub completion 3",
+          "renderedHtml": "<p>phase07 browser stub completion 3</p>\n",
+          "contextUsage": {
+            "usedTokens": 1130,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 3.53125
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      }
+    ]
+  },
+  "postInterruptStream": {
+    "httpStatus": 200,
+    "events": [
+      {
+        "event": "start",
+        "raw": "event:start\ndata:{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"turnId\":\"d5ebba64-6b23-42d2-8fe3-276cf849cdd9\",\"interruptToken\":\"bVgV3GqTVjKa-5a9kbDp2YqsKHbzC22a\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"turnId\":\"d5ebba64-6b23-42d2-8fe3-276cf849cdd9\",\"interruptToken\":\"bVgV3GqTVjKa-5a9kbDp2YqsKHbzC22a\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+          "model": "phase07-browser-stub",
+          "turnId": "d5ebba64-6b23-42d2-8fe3-276cf849cdd9",
+          "interruptToken": "bVgV3GqTVjKa-5a9kbDp2YqsKHbzC22a",
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "context",
+        "raw": "event:context\ndata:{\"contextUsage\":{\"usedTokens\":1158,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.61875},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"contextUsage\":{\"usedTokens\":1158,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.61875},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "contextUsage": {
+            "usedTokens": 1158,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 3.61875
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "chunk",
+        "raw": "event:chunk\ndata:{\"text\":\"phase07 browser stub completion 5\",\"renderedHtml\":\"<p>phase07 browser stub completion 5</p>\\n\",\"thinkingHtml\":null,\"contextUsage\":{\"usedTokens\":1158,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.61875},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"text\":\"phase07 browser stub completion 5\",\"renderedHtml\":\"<p>phase07 browser stub completion 5</p>\\n\",\"thinkingHtml\":null,\"contextUsage\":{\"usedTokens\":1158,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.61875},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "text": "phase07 browser stub completion 5",
+          "renderedHtml": "<p>phase07 browser stub completion 5</p>\n",
+          "thinkingHtml": null,
+          "contextUsage": {
+            "usedTokens": 1158,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 3.61875
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "done",
+        "raw": "event:done\ndata:{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"text\":\"phase07 browser stub completion 5\",\"renderedHtml\":\"<p>phase07 browser stub completion 5</p>\\n\",\"contextUsage\":{\"usedTokens\":1158,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.61875},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"text\":\"phase07 browser stub completion 5\",\"renderedHtml\":\"<p>phase07 browser stub completion 5</p>\\n\",\"contextUsage\":{\"usedTokens\":1158,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.61875},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+          "model": "phase07-browser-stub",
+          "text": "phase07 browser stub completion 5",
+          "renderedHtml": "<p>phase07 browser stub completion 5</p>\n",
+          "contextUsage": {
+            "usedTokens": 1158,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 3.61875
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      }
+    ],
+    "terminalEvents": [
+      {
+        "event": "done",
+        "raw": "event:done\ndata:{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"text\":\"phase07 browser stub completion 5\",\"renderedHtml\":\"<p>phase07 browser stub completion 5</p>\\n\",\"contextUsage\":{\"usedTokens\":1158,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.61875},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"text\":\"phase07 browser stub completion 5\",\"renderedHtml\":\"<p>phase07 browser stub completion 5</p>\\n\",\"contextUsage\":{\"usedTokens\":1158,\"maxTokens\":32000,\"triggerTokens\":21440,\"percentUsed\":3.61875},\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+          "model": "phase07-browser-stub",
+          "text": "phase07 browser stub completion 5",
+          "renderedHtml": "<p>phase07 browser stub completion 5</p>\n",
+          "contextUsage": {
+            "usedTokens": 1158,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 3.61875
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      }
+    ],
+    "staleConflict": false
+  },
+  "abortStream": {
+    "httpStatus": 200,
+    "startEvent": {
+      "event": "start",
+      "raw": "event:start\ndata:{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"turnId\":\"8ec2bdcf-1c7d-43e2-994a-9dcb5f335883\",\"interruptToken\":\"ECKmL5q_gt23e7KMoHKPb_tkgxa91rwO\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "dataText": "{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"turnId\":\"8ec2bdcf-1c7d-43e2-994a-9dcb5f335883\",\"interruptToken\":\"ECKmL5q_gt23e7KMoHKPb_tkgxa91rwO\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "data": {
+        "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+        "model": "phase07-browser-stub",
+        "turnId": "8ec2bdcf-1c7d-43e2-994a-9dcb5f335883",
+        "interruptToken": "ECKmL5q_gt23e7KMoHKPb_tkgxa91rwO",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "abortReadOutcome": {
+      "name": "AbortError",
+      "message": "AbortError: BodyStreamBuffer was aborted"
+    }
+  },
+  "retryAfterAbortStream": {
+    "httpStatus": 200,
+    "events": [
+      {
+        "event": "start",
+        "raw": "event:start\ndata:{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"turnId\":\"157a758b-f111-4db5-a9ca-dcd1dce06412\",\"interruptToken\":\"Eg6181XLSxxRQ13zHPZB6Kja8by7oyKV\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"conversationId\":\"29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\",\"model\":\"phase07-browser-stub\",\"turnId\":\"157a758b-f111-4db5-a9ca-dcd1dce06412\",\"interruptToken\":\"Eg6181XLSxxRQ13zHPZB6Kja8by7oyKV\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+          "model": "phase07-browser-stub",
+          "turnId": "157a758b-f111-4db5-a9ca-dcd1dce06412",
+          "interruptToken": "Eg6181XLSxxRQ13zHPZB6Kja8by7oyKV",
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "error",
+        "raw": "event:error\ndata:{\"message\":\"Another stream is already active for conversation 29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\"}",
+        "dataText": "{\"message\":\"Another stream is already active for conversation 29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\"}",
+        "data": {
+          "message": "Another stream is already active for conversation 29135b4a-3e0e-4d76-bc9c-2c95208f4f7a"
+        }
+      }
+    ],
+    "terminalEvents": [
+      {
+        "event": "error",
+        "raw": "event:error\ndata:{\"message\":\"Another stream is already active for conversation 29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\"}",
+        "dataText": "{\"message\":\"Another stream is already active for conversation 29135b4a-3e0e-4d76-bc9c-2c95208f4f7a\"}",
+        "data": {
+          "message": "Another stream is already active for conversation 29135b4a-3e0e-4d76-bc9c-2c95208f4f7a"
+        }
+      }
+    ],
+    "waitAfterAbortMs": 750,
+    "staleConflict": true
+  },
+  "history": {
+    "httpStatus": 200,
+    "body": {
+      "conversationId": "29135b4a-3e0e-4d76-bc9c-2c95208f4f7a",
+      "title": "phase07 browser stub completion 4",
+      "titleJobStatus": "SUCCEEDED",
+      "model": "phase07-browser-stub",
+      "messages": [
+        {
+          "role": "user",
+          "text": "phase 07 browser revalidation interrupt probe 1780216256104",
+          "renderedHtml": "<p>phase 07 browser revalidation interrupt probe 1780216256104</p>\n",
+          "thinkingHtml": null,
+          "toolActivity": null
+        },
+        {
+          "role": "assistant",
+          "text": "phase07 browser stub completion 3",
+          "renderedHtml": "<p>phase07 browser stub completion 3</p>\n",
+          "thinkingHtml": null,
+          "toolActivity": null
+        },
+        {
+          "role": "user",
+          "text": "phase 07 browser revalidation post interrupt cleanup 1780216260647",
+          "renderedHtml": "<p>phase 07 browser revalidation post interrupt cleanup 1780216260647</p>\n",
+          "thinkingHtml": null,
+          "toolActivity": null
+        },
+        {
+          "role": "assistant",
+          "text": "phase07 browser stub completion 5",
+          "renderedHtml": "<p>phase07 browser stub completion 5</p>\n",
+          "thinkingHtml": null,
+          "toolActivity": null
+        },
+        {
+          "role": "user",
+          "text": "phase 07 browser revalidation abort probe 1780216265191",
+          "renderedHtml": "<p>phase 07 browser revalidation abort probe 1780216265191</p>\n",
+          "thinkingHtml": null,
+          "toolActivity": null
+        }
+      ],
+      "contextUsage": {
+        "usedTokens": 1175,
+        "maxTokens": 32000,
+        "triggerTokens": 21440,
+        "percentUsed": 3.671875
+      },
+      "planState": {
+        "mode": "NORMAL",
+        "status": null,
+        "planningTask": null,
+        "title": null,
+        "summary": null,
+        "goal": null,
+        "notes": null,
+        "deliverables": [],
+        "inputs": [],
+        "outputs": [],
+        "assumptions": [],
+        "steps": [],
+        "acceptanceCriteria": [],
+        "executionEvidence": [],
+        "validationFeedback": [],
+        "promptType": null,
+        "promptQuestion": null,
+        "promptOptions": [],
+        "promptQuestionIndex": 0,
+        "promptQuestionCount": 0,
+        "approvalMarkdown": null,
+        "approvalHtml": null,
+        "documentMarkdown": null,
+        "documentHtml": null
+      }
+    }
+  }
+}

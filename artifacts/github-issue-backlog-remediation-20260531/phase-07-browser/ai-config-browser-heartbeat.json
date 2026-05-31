@@ -1,0 +1,28 @@
+{
+  "defaultAgent": "magenta",
+  "defaultModel": "phase07-browser-stub",
+  "summaryModel": "phase07-browser-stub",
+  "planningModel": "phase07-browser-stub",
+  "compactionModel": "phase07-browser-stub",
+  "contextBufferPercent": 33,
+  "unsafeAllowWildcardShellCommands": false,
+  "webSearch": { "enabled": false, "provider": "searxng", "baseUrl": "http://127.0.0.1:18089" },
+  "models": {
+    "phase07-browser-stub": {
+      "remoteModelName": "phase07-browser-stub",
+      "remoteEndpoint": "http://127.0.0.1:18089",
+      "endpointType": "OPENAI_COMPATIBLE",
+      "contextLength": 32000,
+      "thinkLevel": 0,
+      "apiKey": "phase07-browser-test-key"
+    }
+  },
+  "agents": {
+    "magenta": {
+      "model": "phase07-browser-stub",
+      "systemPrompt": "/tmp/magenta2-phase07-heartbeat-browser/config/prompts/system.md",
+      "approvedTools": [],
+      "allowedShellCommands": []
+    }
+  }
+}

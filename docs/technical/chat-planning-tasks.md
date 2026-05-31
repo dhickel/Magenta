@@ -27,7 +27,7 @@ Session metadata includes:
 5. Streams model output and tool activity.
 6. Persists assistant messages, audit events, context usage, and any plan/task state changes.
 
-Streaming events are represented by `ChatStreamEvent` and sent over `/api/chat/stream`. Expected event names are `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error`.
+Streaming events are represented by `ChatStreamEvent` and sent over `/api/chat/stream`. Expected event names are `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error`. The transport may also include SSE comment heartbeats so the server can detect browser aborts before the next model event; clients should ignore comments.
 
 ## Anonymous Chat Planning
 
@@ -61,7 +61,7 @@ For anonymous chat plans, relative artifact paths supplied to `plan_report` or `
 
 Anonymous execution is single-flight per conversation. `ActiveTurnRegistry` rejects a second saved-plan execution request for the same conversation while an execution turn is active, and the `/api/chat/{conversationId}/plan/execute` and `/api/chat/{conversationId}/plan/execute/stream` routes return `409 Conflict` before marking the plan executing.
 
-Plan execution SSE transport errors are tracked separately from domain execution errors. If the browser closes or the SSE response breaks while anonymous execution is still running, `ChatController` records a `plan_stream_disconnect` audit diagnostic and stops sending events to that client without calling `recordExecutionFailure`. Underlying model/tool execution errors still record `plan_stream_error` and can move the plan to `NEEDS_REVIEW`.
+Plan execution SSE transport errors are tracked separately from domain execution errors. If the browser closes or the SSE response breaks while anonymous execution is still running, `ChatController` records a `plan_stream_disconnect` audit diagnostic, cancels the abandoned model worker, and stops sending events to that client without calling `recordExecutionFailure`. Heartbeat send failure is treated as transport disconnect evidence for this cleanup path. Underlying model/tool execution errors still record `plan_stream_error` and can move the plan to `NEEDS_REVIEW`.
 
 History reload and completed execution stream finalization use a non-compacting context usage snapshot. These paths must not call the summary/compaction model or mutate stored transcript state. If stored context is already over the compaction trigger, reload can still report the over-budget usage while preserving the completed plan transcript and artifacts; the next model-backed send remains responsible for prompt-time compaction, trim, or fail-closed handling.
 
@@ -156,6 +156,6 @@ Tools are controlled by `ChatToolRegistry` and per-agent approved tools. Shell e
 
 ## Interruption and Active Turns
 
-`ConversationTurnCoordinator`, `ActiveTurnRegistry`, and related `ai.execution` records track active work and interrupt status. `/api/chat/turns/{turnId}/interrupt` accepts a conversation id, interrupt token, and message to request interruption of an active turn.
+`ConversationTurnCoordinator`, `ActiveTurnRegistry`, and related `ai.execution` records track active work and interrupt status. `/api/chat/turns/{turnId}/interrupt` accepts a conversation id, interrupt token, and message to request interruption of an active turn. Stream `start` payload tokens are accepted during plain `MODEL_CALL`, tool `MODEL_CALL`, `TOOL_CALL`, and `TOOL_CHECKPOINT` phases; model-call cancellation is best-effort and depends on the provider client honoring thread interruption. Abandoned stream owners carry a cancellation fence into chat context persistence so a late provider response does not append a duplicate assistant message after a retry has started.
 
 The orchestration runtime can also force-interrupt agent queue work through operational routes, but durable assignment state remains owned by `AssignmentService`.

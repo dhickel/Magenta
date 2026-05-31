@@ -21,7 +21,9 @@ public final class ChatStreamSupport {
      * Sends an event on the SSE emitter with JSON media type.
      */
     public static void sendSseEvent(SseEmitter emitter, String eventName, Object data) throws Exception {
-        emitter.send(SseEmitter.event().name(eventName).data(data, MediaType.APPLICATION_JSON));
+        synchronized (emitter) {
+            emitter.send(SseEmitter.event().name(eventName).data(data, MediaType.APPLICATION_JSON));
+        }
     }
 
     /**

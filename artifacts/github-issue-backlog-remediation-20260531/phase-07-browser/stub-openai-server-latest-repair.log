@@ -1,0 +1,9 @@
+{"event":"listening","port":18089}
+{"event":"request-start","id":1,"bytes":242}
+{"event":"request-close","id":1,"elapsedMs":1}
+{"event":"request-start","id":2,"bytes":241}
+{"event":"request-close","id":2,"elapsedMs":0}
+{"event":"response-sent","id":1,"elapsedMs":4506}
+{"event":"response-close","id":1,"elapsedMs":4506}
+{"event":"response-sent","id":2,"elapsedMs":4501}
+{"event":"response-close","id":2,"elapsedMs":4501}

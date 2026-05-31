@@ -3,6 +3,7 @@ package io.mindspice.magenta2.ai.chat.service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
@@ -39,6 +40,7 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
 
     public static final String CONTEXT_USAGE_KEY = "magenta.contextUsage";
     public static final String OMIT_STORED_MESSAGES_KEY = "magenta.omitStoredMessages";
+    public static final String CANCELLED_KEY = "magenta.cancelled";
     public static final String SUMMARY_PREFIX = "[[MAGENTA_CONTEXT_SUMMARY]]\n";
     public static final String NOTICE_PREFIX = "[[MAGENTA_CONTEXT_COMPACTED_NOTICE]] ";
     public static final String COMPACTION_NOTICE = "Context compacted to keep the conversation within the model window.";
@@ -105,6 +107,9 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
         PreparedRequest prepared = prepare(request);
         ChatClientResponse response = chain.nextCall(prepared.request());
+        if (cancelled(prepared.request().context())) {
+            throw new java.util.concurrent.CancellationException("Chat stream owner was cancelled before completion.");
+        }
         saveAssistantMessages(prepared.conversationId(), assistantMessages(response));
         ContextUsage usage = estimateStoredUsage(prepared.conversationId(), prepared.model());
         usageTracker.record(prepared.conversationId(), usage);
@@ -404,6 +409,14 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
             conversationId,
             model
         );
+    }
+
+    private boolean cancelled(Map<String, Object> context) {
+        if (context == null) {
+            return false;
+        }
+        Object cancellation = context.get(CANCELLED_KEY);
+        return cancellation instanceof BooleanSupplier supplier && supplier.getAsBoolean();
     }
 
     private List<Message> compact(

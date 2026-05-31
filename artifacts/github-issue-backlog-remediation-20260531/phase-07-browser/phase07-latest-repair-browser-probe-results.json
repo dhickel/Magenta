@@ -1,0 +1,120 @@
+{
+  "startedAt": "2026-05-31T09:57:20.317Z",
+  "finishedAt": "2026-05-31T09:57:21.626Z",
+  "pageSanity": {
+    "title": "Magenta Chat",
+    "chatRoot": true,
+    "form": true,
+    "input": true,
+    "modelSelect": true,
+    "planningModelSelect": true,
+    "history": true,
+    "planningPanel": true
+  },
+  "issue15": {
+    "pass": true,
+    "responseStatus": 200,
+    "startEvent": "start",
+    "conversationId": "07fac73a-e5e7-4d31-8c6a-8300d0d0f232",
+    "turnId": "7f1a3987-fdea-4a1a-9c63-02e1c46bbb0e",
+    "interruptToken": "8sJUOVJZabYAywmkS9JgcsVWlb4T29V2",
+    "hasTurnId": true,
+    "hasInterruptToken": true,
+    "interruptHttpStatus": 200,
+    "interruptBody": {
+      "status": "ACCEPTED"
+    },
+    "terminalEvents": [
+      {
+        "event": "error",
+        "data": "{\"message\":\"Thread interrupted while sleeping\"}",
+        "json": {
+          "message": "Thread interrupted while sleeping"
+        }
+      }
+    ],
+    "eventSequence": [
+      "start",
+      "error"
+    ]
+  },
+  "issue14": {
+    "pass": false,
+    "waitMs": 750,
+    "originalStartEvent": "start",
+    "conversationId": "ee60e990-5110-4aab-94a1-a6090feb6420",
+    "turnId": "d46bb28b-a77a-4888-b0a3-7f34f61d427c",
+    "hasTurnId": true,
+    "hasInterruptToken": true,
+    "abortedAt": "2026-05-31T09:57:20.585Z",
+    "retryStartEvent": "start",
+    "retryStartPayload": {
+      "conversationId": "ee60e990-5110-4aab-94a1-a6090feb6420",
+      "model": "phase07-browser-stub",
+      "turnId": "61d6cfd5-b712-4fdb-a031-9f23b506961c",
+      "interruptToken": "C7SmsqiWzPMcPhKIzh16RZP2grGiyEAL",
+      "planState": {
+        "mode": "NORMAL",
+        "status": null,
+        "planningTask": null,
+        "title": null,
+        "summary": null,
+        "goal": null,
+        "notes": null,
+        "deliverables": [],
+        "inputs": [],
+        "outputs": [],
+        "assumptions": [],
+        "steps": [],
+        "acceptanceCriteria": [],
+        "executionEvidence": [],
+        "validationFeedback": [],
+        "promptType": null,
+        "promptQuestion": null,
+        "promptOptions": [],
+        "promptQuestionIndex": 0,
+        "promptQuestionCount": 0,
+        "approvalMarkdown": null,
+        "approvalHtml": null,
+        "documentMarkdown": null,
+        "documentHtml": null
+      }
+    },
+    "retryTerminalEvents": [
+      {
+        "event": "error",
+        "data": "{\"message\":\"Another stream is already active for conversation ee60e990-5110-4aab-94a1-a6090feb6420\"}",
+        "json": {
+          "message": "Another stream is already active for conversation ee60e990-5110-4aab-94a1-a6090feb6420"
+        }
+      }
+    ],
+    "retryEventSequence": [
+      "start",
+      "error"
+    ],
+    "retryErrorText": "Another stream is already active for conversation ee60e990-5110-4aab-94a1-a6090feb6420",
+    "staleConflict": true
+  },
+  "duplicate": {
+    "pass": true,
+    "conversationId": "fc6ebd4e-f48a-415c-bc8f-2b6eb591f356",
+    "firstTurnId": "cd962298-89bb-445d-be20-b41d4a9418b5",
+    "secondStartEvent": "start",
+    "secondTerminalEvents": [
+      {
+        "event": "error",
+        "data": "{\"message\":\"Another stream is already active for conversation fc6ebd4e-f48a-415c-bc8f-2b6eb591f356\"}",
+        "json": {
+          "message": "Another stream is already active for conversation fc6ebd4e-f48a-415c-bc8f-2b6eb591f356"
+        }
+      }
+    ],
+    "secondEventSequence": [
+      "start",
+      "error"
+    ],
+    "errorText": "Another stream is already active for conversation fc6ebd4e-f48a-415c-bc8f-2b6eb591f356"
+  },
+  "overallPass": false
+}

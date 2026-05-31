@@ -1,0 +1,44 @@
+{
+  "task": "github-issue-backlog-remediation-20260531",
+  "updatedAt": "2026-05-31T10:25:39Z",
+  "phase07": {
+    "candidateCommit": "11a3a200f221458c51209539934ca649fcc0fffc",
+    "scopedPatchApplied": true,
+    "excludedFromBrowserProof": [
+      ".gitignore",
+      "AGENTS.md",
+      ".internal-dev/reviews/2026-05-28-model-alias-internal-review.md",
+      "src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/v2/",
+      "future-only #34 planning docs"
+    ],
+    "codeValidationStatus": "pass",
+    "browserValidationStatus": "pass",
+    "mayProceedToCommitPushIssueCloseout": true,
+    "ports": {
+      "app": 18080,
+      "stub": 18089
+    },
+    "latestBrowserEvidence": {
+      "report": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/browser-validation-report.md",
+      "probeJson": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-browser-probe-results.json",
+      "screenshot": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-chat-page.png",
+      "domSnapshot": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-chat-page-snapshot.md",
+      "consoleInitial": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-console-initial.txt",
+      "consoleFinal": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-console-final.txt",
+      "networkInitial": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-network-initial.txt",
+      "networkFinal": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-network-final.txt",
+      "appLog": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/app-heartbeat.log",
+      "stubLog": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/stub-openai-server-heartbeat.log"
+    },
+    "criteria": {
+      "issue15InterruptAccepted": "pass",
+      "issue14AbortRetryWithinWindow": "pass",
+      "duplicateActiveStreamStillRejected": "pass",
+      "chatPageVisualSanity": "pass",
+      "consoleNetworkSanity": "pass"
+    },
+    "blockingFailure": null,
+    "supersedesPriorFailedBrowserReports": true,
+    "latestHeartbeatResult": "Browser fetch abort followed by same-conversation retry after 1000ms reached start -> context -> chunk -> done with no active-stream conflict."
+  }
+}

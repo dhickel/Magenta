@@ -1,0 +1,54 @@
+- generic [active] [ref=e1] [box=0,16,1280,1051]:
+  - banner [ref=e2] [box=16,16,1248,149]:
+    - generic [ref=e5] [box=55,37,1170,69]:
+      - heading "Magenta Chat" [level=1] [ref=e6] [box=552,37,177,34]
+      - paragraph [ref=e7] [box=519,83,241,24]: Session-backed assistant workspace
+    - navigation [ref=e9] [box=66,117,1148,48]:
+      - generic [ref=e10] [box=75,123,1130,36]:
+        - link "Home" [ref=e11] [cursor=pointer] [box=75,123,65,36]:
+          - /url: /
+        - link "Chat" [ref=e12] [cursor=pointer] [box=145,123,56,36]:
+          - /url: /chat
+        - link "Agents" [ref=e13] [cursor=pointer] [box=206,123,75,36]:
+          - /url: /agents
+        - link "Manage" [ref=e14] [cursor=pointer] [box=286,123,81,36]:
+          - /url: /manage
+  - main [ref=e16] [box=16,181,1248,870]:
+    - generic [ref=e18] [box=47,212,1186,808]:
+      - generic [ref=e19] [box=63,228,1154,776]:
+        - complementary [ref=e20] [box=63,228,255,134]:
+          - group [ref=e21] [box=63,228,255,134]:
+            - generic "Sessions" [ref=e22] [cursor=pointer] [box=64,229,253,46]:
+              - generic [ref=e23] [box=77,239,67,24]: Sessions
+            - generic [ref=e25] [box=70,281,240,35]:
+              - generic "Select all chats" [ref=e26] [box=70,281,13,35]:
+                - checkbox "Select all chats" [disabled] [ref=e27] [box=70,281,13,35]
+              - button "Delete" [ref=e28] [cursor=pointer] [box=87,282,72,34]
+              - button "Archive" [ref=e29] [cursor=pointer] [box=163,282,72,34]
+              - button "Favorite" [ref=e30] [cursor=pointer] [box=239,282,72,34]
+            - list [ref=e31] [box=64,322,253,38]:
+              - listitem [ref=e59] [box=70,328,240,26]: No persisted sessions yet.
+        - generic [ref=e32] [box=334,228,612,776]:
+          - generic [ref=e33] [box=334,228,612,118]:
+            - generic [ref=e34] [box=347,238,297,44]:
+              - text: Agent Model
+              - combobox "Agent Model" [ref=e35] [box=414,243,230,35]:
+                - option "phase07-browser-stub" [selected] [box=0,0,0,0]
+            - generic [ref=e36] [box=347,291,316,44]:
+              - text: Planning Model
+              - combobox "Planning Model" [ref=e37] [box=426,296,237,35]:
+                - option "phase07-browser-stub" [selected] [box=0,0,0,0]
+            - generic [ref=e38] [box=671,300,57,26]: Session
+            - code [ref=e39] [box=737,298,81,30]: New chat
+          - generic [ref=e41] [box=0,0,0,0]:
+            - paragraph [ref=e44] [box=351,374,578,26]: No messages in this session yet.
+            - generic [ref=e47] [box=334,786,612,147]:
+              - textbox "Type a message (Enter to send, Shift+Enter newline)" [ref=e48] [box=334,786,543,147]
+              - button "Send" [ref=e49] [cursor=pointer] [box=886,786,60,147]
+          - generic [ref=e51] [box=347,957,586,22]:
+            - generic [ref=e52] [box=347,957,51,22]: Context
+            - generic [ref=e53] [box=874,957,59,22]: 0 / 0 (0%)
+        - complementary [ref=e55] [box=962,228,255,91]:
+          - generic [ref=e56] [box=963,229,253,46]: Outputs
+          - paragraph [ref=e58] [box=973,285,232,23]: Select a chat to view outputs.
+      - status [box=63,1004,1154,0]

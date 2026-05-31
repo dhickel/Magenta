@@ -2,6 +2,7 @@ package io.mindspice.magenta2.api.web;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -49,11 +50,14 @@ import org.springframework.util.StringUtils;
 
 import jakarta.validation.Valid;
 import reactor.core.Disposable;
+import reactor.core.Disposables;
 import reactor.core.scheduler.Schedulers;
 
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
+    private static final Duration STREAM_HEARTBEAT_INTERVAL = Duration.ofMillis(250);
+
     private final ChatService chatService;
     private final ChatPendingMessageService pendingMessageService;
     private final ActiveTurnRegistry activeTurnRegistry;
@@ -136,19 +140,30 @@ public class ChatController {
         );
         SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
         AtomicBoolean clientConnected = new AtomicBoolean(true);
+        AtomicBoolean domainCleaned = new AtomicBoolean(false);
+        AtomicBoolean serverTerminal = new AtomicBoolean(false);
         AtomicBoolean planExecutionFinalized = new AtomicBoolean(false);
         AtomicReference<String> planExecutionFinalMessage = new AtomicReference<>();
 
-        Runnable domainCleanup = () -> {
-            guard.dispose();
-            activeTurnRegistry.complete(activeTurn.turnId());
+        java.util.function.Consumer<Boolean> domainCleanup = cancelWorker -> {
+            if (domainCleaned.compareAndSet(false, true)) {
+                guard.dispose();
+                if (cancelWorker) {
+                    activeTurnRegistry.cancel(activeTurn.turnId());
+                } else {
+                    activeTurnRegistry.complete(activeTurn.turnId());
+                }
+            }
         };
         java.util.function.Consumer<RuntimeException> recordTransportDisconnect = exception -> {
             clientConnected.set(false);
+            chatService.abandonStream(resolvedRequest.conversationId(), activeTurn.turnId());
+            domainCleanup.accept(true);
             recordStreamError(resolvedRequest, planExecution ? "plan_stream_disconnect" : "stream_disconnect", exception);
         };
         java.util.function.Consumer<RuntimeException> failPlanExecution = exception -> {
-            domainCleanup.run();
+            chatService.abandonStream(resolvedRequest.conversationId(), activeTurn.turnId());
+            domainCleanup.accept(true);
             if (planExecution && planExecutionFinalized.compareAndSet(false, true)) {
                 chatService.recordExecutionFailure(resolvedRequest.conversationId(), exception);
             }
@@ -156,8 +171,12 @@ public class ChatController {
         };
 
         emitter.onCompletion(() -> {
-            if (clientConnected.get() || planExecutionFinalized.get()) {
-                domainCleanup.run();
+            if (serverTerminal.get()) {
+                domainCleanup.accept(false);
+            } else {
+                recordTransportDisconnect.accept(new IllegalStateException(
+                    "Chat stream completed before the server sent a terminal event."
+                ));
             }
         });
         emitter.onTimeout(() -> failPlanExecution.accept(new IllegalStateException(
@@ -180,7 +199,8 @@ public class ChatController {
                 )
             );
         } catch (Exception e) {
-            activeTurnRegistry.complete(activeTurn.turnId());
+            chatService.abandonStream(resolvedRequest.conversationId(), activeTurn.turnId());
+            activeTurnRegistry.cancel(activeTurn.turnId());
             emitter.completeWithError(e);
             return emitter;
         }
@@ -260,7 +280,7 @@ public class ChatController {
             },
             error -> {
                 try {
-                    activeTurnRegistry.complete(activeTurn.turnId());
+                    domainCleanup.accept(false);
                     if (planExecution) {
                         RuntimeException runtimeException = error instanceof RuntimeException existing
                             ? existing
@@ -268,11 +288,12 @@ public class ChatController {
                         if (planExecutionFinalized.compareAndSet(false, true)) {
                             chatService.recordExecutionFailure(resolvedRequest.conversationId(), runtimeException);
                         }
-                    } else {
+                    } else if (clientConnected.get()) {
                         chatService.discardLastUserMessage(resolvedRequest.conversationId(), resolvedRequest.message());
                     }
                     recordStreamError(resolvedRequest, planExecution ? "plan_stream_error" : "stream_error", error);
                     ChatStreamSupport.sendSseEvent(emitter, "error", new ChatStreamEvent.Error(error.getMessage()));
+                    serverTerminal.set(true);
                     emitter.complete();
                 } catch (Exception sendError) {
                     emitter.completeWithError(sendError);
@@ -324,9 +345,10 @@ public class ChatController {
                                 chatService.planState(resolvedRequest.conversationId())
                                 )
                             );
+                        serverTerminal.set(true);
                         emitter.complete();
                     } else {
-                        domainCleanup.run();
+                        domainCleanup.accept(true);
                     }
                 } catch (Exception e) {
                     failPlanExecution.accept(new IllegalStateException(
@@ -336,7 +358,18 @@ public class ChatController {
                 }
             }
         );
-        guard.set(subscription);
+        Disposable heartbeat = SseStreamLifecycle.startHeartbeat(
+            emitter,
+            STREAM_HEARTBEAT_INTERVAL,
+            () -> {
+                if (!serverTerminal.get() && !domainCleaned.get()) {
+                    recordTransportDisconnect.accept(new IllegalStateException(
+                        "Chat stream heartbeat failed; client disconnected before the next server event."
+                    ));
+                }
+            }
+        );
+        guard.set(Disposables.composite(subscription, heartbeat));
         return emitter;
     }
 

@@ -1,0 +1,184 @@
+{
+  "startedAt": "2026-05-31T08:54:42.069Z",
+  "location": "http://localhost:18080/chat",
+  "model": "phase07-browser-stub",
+  "dom": {
+    "title": "Magenta Chat",
+    "chatRoot": true,
+    "form": true,
+    "input": true,
+    "modelSelect": true,
+    "planningModelSelect": true,
+    "history": true,
+    "planningPanel": true,
+    "activeSessionText": null
+  },
+  "issue15": {
+    "httpStatus": 200,
+    "startEvent": {
+      "event": "start",
+      "raw": "event:start\ndata:{\"conversationId\":\"ac638edf-00a1-44eb-a225-f0824d1988af\",\"model\":\"phase07-browser-stub\",\"turnId\":\"49f9ddeb-0b5f-4d1e-acdf-43e87f395cea\",\"interruptToken\":\"jWXhLLTHQjwVNCQrO8gFz2cClZ3w9YgB\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "dataText": "{\"conversationId\":\"ac638edf-00a1-44eb-a225-f0824d1988af\",\"model\":\"phase07-browser-stub\",\"turnId\":\"49f9ddeb-0b5f-4d1e-acdf-43e87f395cea\",\"interruptToken\":\"jWXhLLTHQjwVNCQrO8gFz2cClZ3w9YgB\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "data": {
+        "conversationId": "ac638edf-00a1-44eb-a225-f0824d1988af",
+        "model": "phase07-browser-stub",
+        "turnId": "49f9ddeb-0b5f-4d1e-acdf-43e87f395cea",
+        "interruptToken": "jWXhLLTHQjwVNCQrO8gFz2cClZ3w9YgB",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "turn": {
+      "conversationId": "ac638edf-00a1-44eb-a225-f0824d1988af",
+      "turnId": "49f9ddeb-0b5f-4d1e-acdf-43e87f395cea",
+      "interruptToken": "jWXhLLTHQjwVNCQrO8gFz2cClZ3w9YgB"
+    },
+    "hasTurnId": true,
+    "hasInterruptToken": true,
+    "interrupt": {
+      "httpStatus": 200,
+      "ok": true,
+      "body": {
+        "status": "ACCEPTED"
+      }
+    },
+    "terminalEvents": [
+      {
+        "event": "error",
+        "raw": "event:error\ndata:{\"message\":\"Thread interrupted while sleeping\"}",
+        "dataText": "{\"message\":\"Thread interrupted while sleeping\"}",
+        "data": {
+          "message": "Thread interrupted while sleeping"
+        }
+      }
+    ],
+    "pass": true
+  },
+  "issue14": {
+    "abortStreamHttpStatus": 200,
+    "abortStartEvent": {
+      "event": "start",
+      "raw": "event:start\ndata:{\"conversationId\":\"9f8367f6-b473-48cb-8535-4d8a665821be\",\"model\":\"phase07-browser-stub\",\"turnId\":\"d297ba4f-f659-48c4-9813-35ca28658f57\",\"interruptToken\":\"fGpNjqmuVFdNqC-g0kZa5jw4TCLtNslN\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "dataText": "{\"conversationId\":\"9f8367f6-b473-48cb-8535-4d8a665821be\",\"model\":\"phase07-browser-stub\",\"turnId\":\"d297ba4f-f659-48c4-9813-35ca28658f57\",\"interruptToken\":\"fGpNjqmuVFdNqC-g0kZa5jw4TCLtNslN\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+      "data": {
+        "conversationId": "9f8367f6-b473-48cb-8535-4d8a665821be",
+        "model": "phase07-browser-stub",
+        "turnId": "d297ba4f-f659-48c4-9813-35ca28658f57",
+        "interruptToken": "fGpNjqmuVFdNqC-g0kZa5jw4TCLtNslN",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "retryConversationId": "9f8367f6-b473-48cb-8535-4d8a665821be",
+    "abortedAt": "2026-05-31T08:54:42.859Z",
+    "retryDelayMs": 750,
+    "retryHttpStatus": 200,
+    "retryEvents": [
+      {
+        "event": "start",
+        "raw": "event:start\ndata:{\"conversationId\":\"9f8367f6-b473-48cb-8535-4d8a665821be\",\"model\":\"phase07-browser-stub\",\"turnId\":\"8d271d48-49fe-4c88-a4fe-031b797f7581\",\"interruptToken\":\"6uBuRnmblSidDebdtKXgDKPhygkRpKba\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "dataText": "{\"conversationId\":\"9f8367f6-b473-48cb-8535-4d8a665821be\",\"model\":\"phase07-browser-stub\",\"turnId\":\"8d271d48-49fe-4c88-a4fe-031b797f7581\",\"interruptToken\":\"6uBuRnmblSidDebdtKXgDKPhygkRpKba\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+        "data": {
+          "conversationId": "9f8367f6-b473-48cb-8535-4d8a665821be",
+          "model": "phase07-browser-stub",
+          "turnId": "8d271d48-49fe-4c88-a4fe-031b797f7581",
+          "interruptToken": "6uBuRnmblSidDebdtKXgDKPhygkRpKba",
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "error",
+        "raw": "event:error\ndata:{\"message\":\"Another stream is already active for conversation 9f8367f6-b473-48cb-8535-4d8a665821be\"}",
+        "dataText": "{\"message\":\"Another stream is already active for conversation 9f8367f6-b473-48cb-8535-4d8a665821be\"}",
+        "data": {
+          "message": "Another stream is already active for conversation 9f8367f6-b473-48cb-8535-4d8a665821be"
+        }
+      }
+    ],
+    "terminalEvent": {
+      "event": "error",
+      "raw": "event:error\ndata:{\"message\":\"Another stream is already active for conversation 9f8367f6-b473-48cb-8535-4d8a665821be\"}",
+      "dataText": "{\"message\":\"Another stream is already active for conversation 9f8367f6-b473-48cb-8535-4d8a665821be\"}",
+      "data": {
+        "message": "Another stream is already active for conversation 9f8367f6-b473-48cb-8535-4d8a665821be"
+      }
+    },
+    "staleConflict": true,
+    "pass": false
+  },
+  "finishedAt": "2026-05-31T08:54:43.624Z",
+  "overallPass": false
+}

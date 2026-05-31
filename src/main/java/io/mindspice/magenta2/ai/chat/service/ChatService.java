@@ -1,17 +1,19 @@
 package io.mindspice.magenta2.ai.chat.service;
 
-import java.util.UUID;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
-import java.util.LinkedHashMap;
 import java.util.regex.Pattern;
 
 import java.io.IOException;
@@ -145,7 +147,7 @@ public class ChatService {
     private final ChatPendingMessageService chatPendingMessageService;
     private final AgentSkillActivationService agentSkillActivationService;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
-    private final Map<String, Semaphore> streamLocks = new ConcurrentHashMap<>();
+    private final Map<String, ActiveStreamLock> streamLocks = new ConcurrentHashMap<>();
 
     // Extracted turn components (Plan 01 — Chat Turn Orchestration)
     private final PromptContextAssembler promptAssembler;
@@ -589,21 +591,55 @@ public class ChatService {
     public Flux<ChatMessage> stream(ResolvedChatRequest request, ActiveTurn activeTurn) {
         if (turnCoordinator != null) {
             return Flux.defer(() -> {
-                Semaphore lock = streamLocks.computeIfAbsent(
-                    request.conversationId(), k -> new Semaphore(1));
-                if (!lock.tryAcquire()) {
+                ActiveStreamLock lock = new ActiveStreamLock(request.conversationId(), activeTurn);
+                if (!claimStreamLock(lock)) {
                     return Flux.error(new IllegalStateException(
                         "Another stream is already active for conversation " + request.conversationId()));
                 }
                 return streamNow(request, activeTurn)
-                    .doFinally(signal -> {
-                        lock.release();
-                        streamLocks.compute(request.conversationId(), (k, v) ->
-                            v != null && v.availablePermits() > 0 ? null : v);
-                    });
+                    .doFinally(signal -> releaseStreamLock(lock));
             });
         }
         return streamNow(request, activeTurn);
+    }
+
+    private boolean claimStreamLock(ActiveStreamLock lock) {
+        return streamLocks.putIfAbsent(lock.conversationId, lock) == null;
+    }
+
+    public void abandonStream(String conversationId, String turnId) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(turnId)) {
+            return;
+        }
+        ActiveStreamLock lock = streamLocks.get(conversationId);
+        if (lock != null && lock.isOwner(turnId)) {
+            releaseStreamLock(lock);
+        }
+    }
+
+    private void releaseStreamLock(ActiveStreamLock lock) {
+        if (lock.release()) {
+            streamLocks.remove(lock.conversationId, lock);
+        }
+    }
+
+    private static final class ActiveStreamLock {
+        private final String conversationId;
+        private final String ownerTurnId;
+        private final AtomicBoolean released = new AtomicBoolean(false);
+
+        private ActiveStreamLock(String conversationId, ActiveTurn ownerTurn) {
+            this.conversationId = conversationId;
+            this.ownerTurnId = ownerTurn == null ? null : ownerTurn.turnId();
+        }
+
+        private boolean isOwner(String turnId) {
+            return StringUtils.hasText(ownerTurnId) && ownerTurnId.equals(turnId);
+        }
+
+        private boolean release() {
+            return released.compareAndSet(false, true);
+        }
     }
 
     private Flux<ChatMessage> streamNow(ResolvedChatRequest request, ActiveTurn activeTurn) {
@@ -633,16 +669,21 @@ public class ChatService {
                         return Flux.error(exception);
                     }
                     rememberToolUnsupportedModel(request.model());
-                    return plainStream(request);
+                    return plainStream(request, activeTurn);
                 });
         }
-        return plainStream(request);
+        return plainStream(request, activeTurn);
     }
 
-    private Flux<ChatMessage> plainStream(ResolvedChatRequest request) {
+    private Flux<ChatMessage> plainStream(ResolvedChatRequest request, ActiveTurn activeTurn) {
         chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
         return Flux.defer(() -> {
-            ChatClientResponse chatClientResponse = prompt(request).call().chatClientResponse();
+            phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
+            ChatClientResponse chatClientResponse = withActiveTurnWorker(
+                activeTurn,
+                () -> prompt(request, activeTurn).call().chatClientResponse()
+            );
+            throwIfCancelled(activeTurn);
             StoredContextUsage maintenance = maintainContextUsage(request.conversationId(), request.model());
             if (maintenance.compacted()) {
                 return Flux.just(
@@ -1558,7 +1599,11 @@ public class ChatService {
 
     private void handleInvokeModel(ToolLoopState s) {
         phase(s.activeTurn, ActiveTurnPhase.MODEL_CALL);
-        s.response = chatModelRouter.chatModel(s.request.model()).call(s.prompt);
+        s.response = withActiveTurnWorker(
+            s.activeTurn,
+            () -> chatModelRouter.chatModel(s.request.model()).call(s.prompt)
+        );
+        throwIfCancelled(s.activeTurn);
         s.phase = TurnPhase.EVALUATE;
     }
 
@@ -1914,6 +1959,7 @@ public class ChatService {
         }
 
         phase(s.activeTurn, ActiveTurnPhase.COMPLETING);
+        throwIfCancelled(s.activeTurn);
         collectThinking(s.response, s.thinkingParts);
 
         AssistantMessage finalAssistantMessage;
@@ -2061,6 +2107,25 @@ public class ChatService {
     private void phase(ActiveTurn activeTurn, ActiveTurnPhase phase) {
         if (activeTurn != null) {
             activeTurn.phase(phase);
+        }
+    }
+
+    private <T> T withActiveTurnWorker(ActiveTurn activeTurn, Supplier<T> supplier) {
+        if (activeTurn == null) {
+            return supplier.get();
+        }
+        Thread currentThread = Thread.currentThread();
+        activeTurn.workerThread(currentThread);
+        try {
+            return supplier.get();
+        } finally {
+            activeTurn.clearWorkerThread(currentThread);
+        }
+    }
+
+    private void throwIfCancelled(ActiveTurn activeTurn) {
+        if (activeTurn != null && activeTurn.cancelled()) {
+            throw new CancellationException("Chat stream owner was cancelled before completion.");
         }
     }
 
@@ -2281,6 +2346,10 @@ public class ChatService {
 
 
     private ChatClient.ChatClientRequestSpec prompt(ResolvedChatRequest request) {
+        return prompt(request, null);
+    }
+
+    private ChatClient.ChatClientRequestSpec prompt(ResolvedChatRequest request, ActiveTurn activeTurn) {
         ChatClient chatClient = chatModelRouter == null
             ? null
             : ChatClient.builder(chatModelRouter.chatModel(request.model()))
@@ -2291,6 +2360,12 @@ public class ChatService {
         }
         ChatClient.ChatClientRequestSpec prompt = chatClient.prompt()
             .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, request.conversationId()));
+        if (activeTurn != null) {
+            prompt = prompt.advisors(advisorSpec -> advisorSpec.param(
+                ContextManagementAdvisor.CANCELLED_KEY,
+                (java.util.function.BooleanSupplier) activeTurn::cancelled
+            ));
+        }
         if (request.omitStoredMessages()) {
             prompt = prompt.advisors(advisorSpec -> advisorSpec.param(
                 ContextManagementAdvisor.OMIT_STORED_MESSAGES_KEY,

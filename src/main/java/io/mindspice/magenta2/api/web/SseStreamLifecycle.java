@@ -1,11 +1,13 @@
 package io.mindspice.magenta2.api.web;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
 
 /**
  * Standardized SSE lifecycle support for text/event-stream endpoints.
@@ -182,6 +184,25 @@ public final class SseStreamLifecycle {
         } catch (IllegalStateException | IOException exception) {
             return false;
         }
+    }
+
+    public static Disposable startHeartbeat(
+        SseEmitter emitter,
+        Duration interval,
+        Runnable onFailure
+    ) {
+        long intervalMillis = Math.max(1L, interval == null ? 0L : interval.toMillis());
+        return Flux.interval(Duration.ofMillis(intervalMillis)).subscribe(ignored -> {
+            try {
+                synchronized (emitter) {
+                    emitter.send(SseEmitter.event().comment("heartbeat"));
+                }
+            } catch (IllegalStateException | IOException exception) {
+                if (onFailure != null) {
+                    onFailure.run();
+                }
+            }
+        });
     }
 
     public static void completeQuietly(SseEmitter emitter) {

@@ -1,0 +1,444 @@
+{
+  "startedAt": "2026-05-31T10:24:41.901Z",
+  "page": {
+    "url": "http://localhost:18080/chat",
+    "title": "Magenta Chat"
+  },
+  "dom": {
+    "chatRoot": true,
+    "form": true,
+    "input": true,
+    "modelSelect": true,
+    "planningModelSelect": true,
+    "history": true,
+    "planningPanel": true
+  },
+  "issue15": {
+    "httpStatus": 200,
+    "start": {
+      "event": "start",
+      "data": {
+        "conversationId": "5f06ba9b-5bea-4ecb-a7fb-26ecb246cb6d",
+        "model": "phase07-browser-stub",
+        "turnId": "7f496530-ae0f-45e0-8062-6b2b91d98af7",
+        "interruptToken": "a2e6-2fU8K0I8eBHT01BiGV3AmDTnrSq",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "hasTurnId": true,
+    "hasInterruptToken": true,
+    "interruptHttpStatus": 200,
+    "interruptBody": {
+      "status": "ACCEPTED"
+    },
+    "terminal": {
+      "event": "error",
+      "data": {
+        "message": "Thread interrupted while sleeping"
+      }
+    },
+    "events": [
+      {
+        "event": "start",
+        "data": {
+          "conversationId": "5f06ba9b-5bea-4ecb-a7fb-26ecb246cb6d",
+          "model": "phase07-browser-stub",
+          "turnId": "7f496530-ae0f-45e0-8062-6b2b91d98af7",
+          "interruptToken": "a2e6-2fU8K0I8eBHT01BiGV3AmDTnrSq",
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "error",
+        "data": {
+          "message": "Thread interrupted while sleeping"
+        }
+      }
+    ],
+    "pass": true
+  },
+  "issue14": {
+    "initialHttpStatus": 200,
+    "start": {
+      "event": "start",
+      "data": {
+        "conversationId": "a4cec50a-88f2-4767-b57f-d3b80d9c9b02",
+        "model": "phase07-browser-stub",
+        "turnId": "05f380fd-e2ba-4d3a-95ba-6d86513c1555",
+        "interruptToken": "sr2CPCcMhHDwmVXiA7KzfoQeQxuKDRvw",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "conversationId": "a4cec50a-88f2-4767-b57f-d3b80d9c9b02",
+    "abortedAt": "2026-05-31T10:24:43.186Z",
+    "retryDelayMs": 1000,
+    "retryHttpStatus": 200,
+    "retryTerminal": {
+      "event": "done",
+      "data": {
+        "conversationId": "a4cec50a-88f2-4767-b57f-d3b80d9c9b02",
+        "model": "phase07-browser-stub",
+        "text": "phase07 browser stub completion 2",
+        "renderedHtml": "<p>phase07 browser stub completion 2</p>\n",
+        "contextUsage": {
+          "usedTokens": 53,
+          "maxTokens": 32000,
+          "triggerTokens": 21440,
+          "percentUsed": 0.165625
+        },
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "retryEvents": [
+      {
+        "event": "start",
+        "data": {
+          "conversationId": "a4cec50a-88f2-4767-b57f-d3b80d9c9b02",
+          "model": "phase07-browser-stub",
+          "turnId": "637215dc-caa8-496c-b43d-33512d0ecd9e",
+          "interruptToken": "Dae63fF6aWxAfnH984Vtfg_A8B3cfkkl",
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "context",
+        "data": {
+          "contextUsage": {
+            "usedTokens": 53,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 0.165625
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "chunk",
+        "data": {
+          "text": "phase07 browser stub completion 2",
+          "renderedHtml": "<p>phase07 browser stub completion 2</p>\n",
+          "thinkingHtml": null,
+          "contextUsage": {
+            "usedTokens": 53,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 0.165625
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "done",
+        "data": {
+          "conversationId": "a4cec50a-88f2-4767-b57f-d3b80d9c9b02",
+          "model": "phase07-browser-stub",
+          "text": "phase07 browser stub completion 2",
+          "renderedHtml": "<p>phase07 browser stub completion 2</p>\n",
+          "contextUsage": {
+            "usedTokens": 53,
+            "maxTokens": 32000,
+            "triggerTokens": 21440,
+            "percentUsed": 0.165625
+          },
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      }
+    ],
+    "staleConflict": false,
+    "pass": true
+  },
+  "duplicate": {
+    "firstHttpStatus": 200,
+    "firstStart": {
+      "event": "start",
+      "data": {
+        "conversationId": "eb7ab2f1-9592-4cb4-9f14-6c483d299f85",
+        "model": "phase07-browser-stub",
+        "turnId": "f76bf499-6449-4b21-a840-064416461bea",
+        "interruptToken": "E_O60dYaiWzOl_QCWeUSiivW2kMDo5LT",
+        "planState": {
+          "mode": "NORMAL",
+          "status": null,
+          "planningTask": null,
+          "title": null,
+          "summary": null,
+          "goal": null,
+          "notes": null,
+          "deliverables": [],
+          "inputs": [],
+          "outputs": [],
+          "assumptions": [],
+          "steps": [],
+          "acceptanceCriteria": [],
+          "executionEvidence": [],
+          "validationFeedback": [],
+          "promptType": null,
+          "promptQuestion": null,
+          "promptOptions": [],
+          "promptQuestionIndex": 0,
+          "promptQuestionCount": 0,
+          "approvalMarkdown": null,
+          "approvalHtml": null,
+          "documentMarkdown": null,
+          "documentHtml": null
+        }
+      }
+    },
+    "secondHttpStatus": 200,
+    "secondTerminal": {
+      "event": "error",
+      "data": {
+        "message": "Another stream is already active for conversation eb7ab2f1-9592-4cb4-9f14-6c483d299f85"
+      }
+    },
+    "secondEvents": [
+      {
+        "event": "start",
+        "data": {
+          "conversationId": "eb7ab2f1-9592-4cb4-9f14-6c483d299f85",
+          "model": "phase07-browser-stub",
+          "turnId": "f15a4b21-1458-45fc-815c-29d2bc288696",
+          "interruptToken": "YS0AUMeTgi1yuSnOz0l2HabpiuvUM1B4",
+          "planState": {
+            "mode": "NORMAL",
+            "status": null,
+            "planningTask": null,
+            "title": null,
+            "summary": null,
+            "goal": null,
+            "notes": null,
+            "deliverables": [],
+            "inputs": [],
+            "outputs": [],
+            "assumptions": [],
+            "steps": [],
+            "acceptanceCriteria": [],
+            "executionEvidence": [],
+            "validationFeedback": [],
+            "promptType": null,
+            "promptQuestion": null,
+            "promptOptions": [],
+            "promptQuestionIndex": 0,
+            "promptQuestionCount": 0,
+            "approvalMarkdown": null,
+            "approvalHtml": null,
+            "documentMarkdown": null,
+            "documentHtml": null
+          }
+        }
+      },
+      {
+        "event": "error",
+        "data": {
+          "message": "Another stream is already active for conversation eb7ab2f1-9592-4cb4-9f14-6c483d299f85"
+        }
+      }
+    ],
+    "rejected": true,
+    "pass": true
+  },
+  "unexpected500s": [],
+  "jsErrors": [],
+  "finishedAt": "2026-05-31T10:24:50.817Z",
+  "overallPass": true
+}

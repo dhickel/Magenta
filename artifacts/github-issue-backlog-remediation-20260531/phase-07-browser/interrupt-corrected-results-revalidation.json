@@ -1,0 +1,76 @@
+{
+  "startedAt": "2026-05-31T08:32:59.751Z",
+  "httpStatus": 200,
+  "startEvent": {
+    "event": "start",
+    "raw": "event:start\ndata:{\"conversationId\":\"bdfb5eb6-4fe2-4acd-a716-7a0849cad3e1\",\"model\":\"phase07-browser-stub\",\"turnId\":\"c3abf2b3-3b01-4636-9194-e7793719fa90\",\"interruptToken\":\"fpwXWEPIds2Vkhjaz_7DE-ZG7K2ZYHUY\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+    "dataText": "{\"conversationId\":\"bdfb5eb6-4fe2-4acd-a716-7a0849cad3e1\",\"model\":\"phase07-browser-stub\",\"turnId\":\"c3abf2b3-3b01-4636-9194-e7793719fa90\",\"interruptToken\":\"fpwXWEPIds2Vkhjaz_7DE-ZG7K2ZYHUY\",\"planState\":{\"mode\":\"NORMAL\",\"status\":null,\"planningTask\":null,\"title\":null,\"summary\":null,\"goal\":null,\"notes\":null,\"deliverables\":[],\"inputs\":[],\"outputs\":[],\"assumptions\":[],\"steps\":[],\"acceptanceCriteria\":[],\"executionEvidence\":[],\"validationFeedback\":[],\"promptType\":null,\"promptQuestion\":null,\"promptOptions\":[],\"promptQuestionIndex\":0,\"promptQuestionCount\":0,\"approvalMarkdown\":null,\"approvalHtml\":null,\"documentMarkdown\":null,\"documentHtml\":null}}",
+    "data": {
+      "conversationId": "bdfb5eb6-4fe2-4acd-a716-7a0849cad3e1",
+      "model": "phase07-browser-stub",
+      "turnId": "c3abf2b3-3b01-4636-9194-e7793719fa90",
+      "interruptToken": "fpwXWEPIds2Vkhjaz_7DE-ZG7K2ZYHUY",
+      "planState": {
+        "mode": "NORMAL",
+        "status": null,
+        "planningTask": null,
+        "title": null,
+        "summary": null,
+        "goal": null,
+        "notes": null,
+        "deliverables": [],
+        "inputs": [],
+        "outputs": [],
+        "assumptions": [],
+        "steps": [],
+        "acceptanceCriteria": [],
+        "executionEvidence": [],
+        "validationFeedback": [],
+        "promptType": null,
+        "promptQuestion": null,
+        "promptOptions": [],
+        "promptQuestionIndex": 0,
+        "promptQuestionCount": 0,
+        "approvalMarkdown": null,
+        "approvalHtml": null,
+        "documentMarkdown": null,
+        "documentHtml": null
+      }
+    }
+  },
+  "turn": {
+    "conversationId": "bdfb5eb6-4fe2-4acd-a716-7a0849cad3e1",
+    "turnId": "c3abf2b3-3b01-4636-9194-e7793719fa90",
+    "interruptToken": "fpwXWEPIds2Vkhjaz_7DE-ZG7K2ZYHUY"
+  },
+  "hasTurnId": true,
+  "hasInterruptToken": true,
+  "interrupt": {
+    "httpStatus": 200,
+    "ok": true,
+    "body": {
+      "status": "ACCEPTED"
+    }
+  },
+  "accepted": true,
+  "terminalEvents": [
+    {
+      "event": "error",
+      "raw": "event:error\ndata:{\"message\":\"Thread interrupted while sleeping\"}",
+      "dataText": "{\"message\":\"Thread interrupted while sleeping\"}",
+      "data": {
+        "message": "Thread interrupted while sleeping"
+      }
+    }
+  ],
+  "eventsAfterStart": [
+    {
+      "event": "error",
+      "raw": "event:error\ndata:{\"message\":\"Thread interrupted while sleeping\"}",
+      "dataText": "{\"message\":\"Thread interrupted while sleeping\"}",
+      "data": {
+        "message": "Thread interrupted while sleeping"
+      }
+    }
+  ]
+}

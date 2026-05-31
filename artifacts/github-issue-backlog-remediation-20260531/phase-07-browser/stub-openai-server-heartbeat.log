@@ -1,0 +1,13 @@
+{"event":"listening","port":18089}
+{"event":"request-start","id":1,"bytes":247}
+{"event":"request-close","id":1,"elapsedMs":0}
+{"event":"response-close","id":1,"elapsedMs":480}
+{"event":"request-start","id":2,"bytes":325}
+{"event":"request-close","id":2,"elapsedMs":0}
+{"event":"response-skipped-closed","id":1}
+{"event":"response-sent","id":2,"elapsedMs":4501}
+{"event":"response-close","id":2,"elapsedMs":4501}
+{"event":"request-start","id":3,"bytes":249}
+{"event":"request-close","id":3,"elapsedMs":0}
+{"event":"response-close","id":3,"elapsedMs":490}
+{"event":"response-skipped-closed","id":3}

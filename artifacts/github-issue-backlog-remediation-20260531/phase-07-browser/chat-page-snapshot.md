@@ -1,0 +1,39 @@
+- generic [active] [ref=e1] [box=0,16,1280,1051]:
+  - banner [ref=e2] [box=16,16,1248,149]:
+    - generic [ref=e5] [box=55,37,1170,69]:
+      - heading "Magenta Chat" [level=1] [ref=e6] [box=552,37,177,34]
+      - paragraph [ref=e7] [box=519,83,241,24]: Session-backed assistant workspace
+    - navigation [ref=e9] [box=66,117,1148,48]:
+      - generic [ref=e10] [box=75,123,1130,36]:
+        - link "Home" [ref=e11] [cursor=pointer] [box=75,123,65,36]:
+          - /url: /
+        - link "Chat" [ref=e12] [cursor=pointer] [box=145,123,56,36]:
+          - /url: /chat
+        - link "Agents" [ref=e13] [cursor=pointer] [box=206,123,75,36]:
+          - /url: /agents
+        - link "Manage" [ref=e14] [cursor=pointer] [box=286,123,81,36]:
+          - /url: /manage
+  - main [ref=e16] [box=16,181,1248,870]:
+    - generic [ref=e18] [box=47,212,1186,808]:
+      - generic [ref=e19] [box=63,228,1154,776]:
+        - complementary [ref=e20] [box=63,228,255,134]:
+          - group [ref=e21] [box=63,228,255,134]:
+            - generic "Sessions" [ref=e22] [cursor=pointer] [box=64,229,253,46]
+            - generic [ref=e25] [box=70,281,240,35]
+            - list [ref=e31] [box=64,322,253,38]
+        - generic [ref=e33] [box=334,228,612,776]:
+          - generic [ref=e34] [box=334,228,612,118]:
+            - generic [ref=e35] [box=347,238,297,44]
+            - generic [ref=e37] [box=347,291,316,44]
+            - generic [ref=e39] [box=671,300,57,26]: Session
+            - code [ref=e40] [box=737,298,81,30]: New chat
+          - generic [ref=e42] [box=0,0,0,0]:
+            - paragraph [ref=e45] [box=351,374,578,26]: No messages in this session yet.
+            - generic [ref=e48] [box=334,786,612,147]
+          - generic [ref=e52] [box=347,957,586,22]:
+            - generic [ref=e53] [box=347,957,51,22]: Context
+            - generic [ref=e54] [box=874,957,59,22]: 0 / 0 (0%)
+        - complementary [ref=e56] [box=962,228,255,91]:
+          - generic [ref=e57] [box=963,229,253,46]: Outputs
+          - paragraph [ref=e59] [box=973,285,232,23]: Select a chat to view outputs.
+      - status [box=63,1004,1154,0]
