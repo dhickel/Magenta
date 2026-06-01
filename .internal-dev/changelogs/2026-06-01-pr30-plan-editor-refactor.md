@@ -20,7 +20,9 @@ Low. The production controller diff remains a private-helper extraction; added t
 - `mvn -Dtest=OrchestrationControllerTest test` passed with 97 tests, 0 failures.
 - `git diff --check` passed.
 - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments="--server.port=0 --spring.datasource.url=jdbc:sqlite:<tmp>/magenta.sqlite?foreign_keys=true --app.ai.config-path=<tmp>/ai-config.json --magenta.root.path=<tmp>/root"` reached Tomcat and shut down by timeout, confirming bounded Spring context startup with isolated local config.
+- Focused browser validation passed for desktop `/plans`: saved editor rendering, HTMX deliverable add/update, planning chat tab separation, and console checks all passed.
+- Focused browser validation did not fully pass on mobile because the pre-existing shell/sidebar behavior intercepted clicks over `/plans` content at `390x844`; this was logged separately as `.internal-dev/bugs/mobile-plans-sidebar-click-interception/report.md` and mirrored to GitHub.
 
 # Follow-up Items
-- Browser validation remains available for a separate PR validation pass if required.
+- Repair the mobile shell/sidebar click interception separately, then rerun focused mobile `/plans` validation.
 - The PR branch has `.internal-dev/` but no `.internal-dev/specifications/` directory, so no specification closeout file was updated or invented on this branch.
