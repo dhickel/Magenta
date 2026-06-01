@@ -1863,136 +1863,19 @@ public class OrchestrationController {
             .withAttribute("name", "kind")
             .withAttribute("value", plan != null && plan.kind() != null ? plan.kind().name() : "TASK_TEMPLATE"));
 
-        // Basic fields
-        form.withChild(new Div().withClass("orch-form-stack")
-            .withChild(label("Title", TextInput.create("title")
-                .withId("plan-title")
-                .withValue(isNew ? "" : nn(plan.title()))))
-            .withChild(label("Summary", autosizingTextArea("summary", isNew ? "" : nn(plan.summary()), 2, 14)
-                .withId("plan-summary")))
-            .withChild(label("Goal", autosizingTextArea("goal", isNew ? "" : nn(plan.goal()), 3, 18)
-                .withId("plan-goal")))
-            .withChild(label("Notes", autosizingTextArea("notes", isNew ? "" : nn(plan.notes()), 2, 18)
-                .withId("plan-notes"))));
+        appendPlanEditorBasicFields(form, isNew, plan);
 
         if (!isNew) {
-            // Deliverables (ordered list editor)
-            form.withChild(sectionHeader("Deliverables",
-                "What the plan/task must produce. Distinct from structured outputs."));
-            form.withChild(new Div().withId("plan-deliverables-section")
-                .withChild(planDeliverablesSection(plan)));
-            form.withChild(Button.create("Add deliverable")
-                .withClass("plan-list-add-btn")
-                .withAttribute("hx-post", "/plans/_editor/" + planId + "/deliverables")
-                .withAttribute("hx-target", "#plan-deliverables-section")
-                .withAttribute("hx-swap", "innerHTML"));
-
-            // Inputs (structured field editor)
-            form.withChild(sectionHeader("Inputs",
-                "Structured inputs the plan/task accepts at runtime."));
-            form.withChild(new Div().withId("plan-inputs-section")
-                .withChild(planInputsSection(plan)));
-            form.withChild(Button.create("Add input field")
-                .withClass("plan-list-add-btn")
-                .withAttribute("hx-post", "/plans/_editor/" + planId + "/inputs")
-                .withAttribute("hx-target", "#plan-inputs-section")
-                .withAttribute("hx-swap", "innerHTML"));
-
-            // Outputs (structured field editor)
-            form.withChild(sectionHeader("Outputs",
-                "Structured outputs the plan/task must produce."));
-            form.withChild(new Div().withId("plan-outputs-section")
-                .withChild(planOutputsSection(plan)));
-            form.withChild(Button.create("Add output field")
-                .withClass("plan-list-add-btn")
-                .withAttribute("hx-post", "/plans/_editor/" + planId + "/outputs")
-                .withAttribute("hx-target", "#plan-outputs-section")
-                .withAttribute("hx-swap", "innerHTML"));
-
-            // Steps (ordered list editor)
-            form.withChild(sectionHeader("Steps",
-                "Ordered execution steps using PlanStep(order, text)."));
-            form.withChild(new Div().withId("plan-steps-section")
-                .withChild(planStepsSection(plan)));
-            form.withChild(Button.create("Add step")
-                .withClass("plan-list-add-btn")
-                .withAttribute("hx-post", "/plans/_editor/" + planId + "/steps")
-                .withAttribute("hx-target", "#plan-steps-section")
-                .withAttribute("hx-swap", "innerHTML"));
-
-            // Validation Criteria (ordered list editor)
-            form.withChild(sectionHeader("Validation Criteria",
-                "Criteria that must be met for the plan to be considered complete."));
-            form.withChild(new Div().withId("plan-validation-section")
-                .withChild(planValidationSection(plan)));
-            form.withChild(Button.create("Add criterion")
-                .withClass("plan-list-add-btn")
-                .withAttribute("hx-post", "/plans/_editor/" + planId + "/validation")
-                .withAttribute("hx-target", "#plan-validation-section")
-                .withAttribute("hx-swap", "innerHTML"));
-
-            // Assumptions (ordered list editor)
-            form.withChild(sectionHeader("Assumptions",
-                "Explicit defaults or choices locked into the plan."));
-            form.withChild(new Div().withId("plan-assumptions-section")
-                .withChild(planAssumptionsSection(plan)));
-            form.withChild(Button.create("Add assumption")
-                .withClass("plan-list-add-btn")
-                .withAttribute("hx-post", "/plans/_editor/" + planId + "/assumptions")
-                .withAttribute("hx-target", "#plan-assumptions-section")
-                .withAttribute("hx-swap", "innerHTML"));
+            appendPlanEditorListSections(form, planId, plan);
         }
 
-        // Worktype, Planning Model, Execution Model
-        String currentWorktype = plan != null ? plan.promptProfile() : null;
-        Div modelGrid = new Div().withClass("orch-form-grid");
-        modelGrid.withChild(label("Manager Type", worktypeSelect(currentWorktype)));
-        modelGrid.withChild(label("Planning Model", modelSelectWithCurrent("planningModel", isNew ? null : plan.planningModel(), chatService.availableModels())
-            .withId("plan-planning-model")));
-        modelGrid.withChild(label("Execution Model", modelSelectWithCurrent("executionModel", isNew ? null : plan.executionModel(), chatService.availableModels())
-            .withId("plan-execution-model")));
-        form.withChild(modelGrid);
+        appendPlanEditorModels(form, isNew, plan);
 
-        // Advanced metadata (collapsible) - only shown for existing plans
         if (!isNew) {
-            Div advanced = new Div().withId("plan-advanced").withClass("field-group");
-            advanced.withChild(new HtmlTag("details")
-                .withChild(new HtmlTag("summary").withInnerText("Advanced"))
-                .withChild(new Div().withClass("orch-form-grid")
-                    .withChild(label("Kind", new HtmlTag("span")
-                        .withInnerText(plan.kind() != null ? plan.kind().name() : "TASK_TEMPLATE")))
-                    .withChild(label("Status", new HtmlTag("span")
-                        .withInnerText(plan.status() != null ? plan.status().name() : "UNKNOWN")))
-                    .withChild(label("ID", new HtmlTag("code")
-                        .withInnerText(nn(plan.id()))))
-                    .withChild(label("Conversation", new HtmlTag("code")
-                        .withInnerText(nn(plan.conversationId()))))
-                    .withChild(label("Plan Start Message Order", new HtmlTag("span")
-                        .withInnerText(String.valueOf(plan.planStartMessageOrder()))))
-                    .withChild(label("Pending Question Index", new HtmlTag("span")
-                        .withInnerText(String.valueOf(plan.pendingQuestionIndex())))))
-                .withChild(new Div().withClass("orch-form-stack")
-                    .withChild(label("Planning Task", autosizingTextArea("planningTask", nn(plan.planningTask()), 2, 18)))
-                    .withChild(label("Final Message", autosizingTextArea("finalMessage", nn(plan.finalMessage()), 3, 18)))
-                    .withChild(label("Settings Override JSON", autosizingTextArea("settingsOverrideJson", nn(plan.settingsOverrideJson()), 4, 20)))));
-            form.withChild(advanced);
+            appendPlanEditorAdvancedMetadata(form, plan);
         }
 
-        // Action buttons
-        Div actions = new Div().withClass("tool-actions");
-        actions.withChild(Button.create("Save").withClass("orch-primary").withAttribute("type", "submit"));
-        if (!isNew) {
-            actions.withChild(Button.create("Finalize Task")
-                .withAttribute("hx-post", "/plans/_editor/" + planId + "/finalize")
-                .withAttribute("hx-target", "#plan-editor-container")
-                .withAttribute("hx-swap", "innerHTML"));
-            actions.withChild(Button.create("Submit to Agent")
-                .withClass("orch-primary")
-                .withAttribute("hx-get", "/plans/_submit-form/" + planId)
-                .withAttribute("hx-target", "#plan-submit-container")
-                .withAttribute("hx-swap", "innerHTML"));
-        }
-        form.withChild(actions);
+        appendPlanEditorActionButtons(form, isNew, planId);
         editorWindow.withChild(form);
 
         if (!isNew) {
@@ -2011,6 +1894,114 @@ public class OrchestrationController {
 
         container.withChild(editorWindow);
         return container;
+    }
+
+    private void appendPlanEditorBasicFields(Form form, boolean isNew, PlanDefinition plan) {
+        form.withChild(new Div().withClass("orch-form-stack")
+            .withChild(label("Title", TextInput.create("title")
+                .withId("plan-title")
+                .withValue(isNew ? "" : nn(plan.title()))))
+            .withChild(label("Summary", autosizingTextArea("summary", isNew ? "" : nn(plan.summary()), 2, 14)
+                .withId("plan-summary")))
+            .withChild(label("Goal", autosizingTextArea("goal", isNew ? "" : nn(plan.goal()), 3, 18)
+                .withId("plan-goal")))
+            .withChild(label("Notes", autosizingTextArea("notes", isNew ? "" : nn(plan.notes()), 2, 18)
+                .withId("plan-notes"))));
+    }
+
+    private void appendPlanEditorListSection(Form form, String title, String description, String sectionId, String hxPostUrl, Component content, String buttonText) {
+        form.withChild(sectionHeader(title, description));
+        form.withChild(new Div().withId(sectionId)
+            .withChild(content));
+        form.withChild(Button.create(buttonText)
+            .withClass("plan-list-add-btn")
+            .withAttribute("hx-post", hxPostUrl)
+            .withAttribute("hx-target", "#" + sectionId)
+            .withAttribute("hx-swap", "innerHTML"));
+    }
+
+    private void appendPlanEditorListSections(Form form, String planId, PlanDefinition plan) {
+        appendPlanEditorListSection(form, "Deliverables",
+            "What the plan/task must produce. Distinct from structured outputs.",
+            "plan-deliverables-section", "/plans/_editor/" + planId + "/deliverables",
+            planDeliverablesSection(plan), "Add deliverable");
+
+        appendPlanEditorListSection(form, "Inputs",
+            "Structured inputs the plan/task accepts at runtime.",
+            "plan-inputs-section", "/plans/_editor/" + planId + "/inputs",
+            planInputsSection(plan), "Add input field");
+
+        appendPlanEditorListSection(form, "Outputs",
+            "Structured outputs the plan/task must produce.",
+            "plan-outputs-section", "/plans/_editor/" + planId + "/outputs",
+            planOutputsSection(plan), "Add output field");
+
+        appendPlanEditorListSection(form, "Steps",
+            "Ordered execution steps using PlanStep(order, text).",
+            "plan-steps-section", "/plans/_editor/" + planId + "/steps",
+            planStepsSection(plan), "Add step");
+
+        appendPlanEditorListSection(form, "Validation Criteria",
+            "Criteria that must be met for the plan to be considered complete.",
+            "plan-validation-section", "/plans/_editor/" + planId + "/validation",
+            planValidationSection(plan), "Add criterion");
+
+        appendPlanEditorListSection(form, "Assumptions",
+            "Explicit defaults or choices locked into the plan.",
+            "plan-assumptions-section", "/plans/_editor/" + planId + "/assumptions",
+            planAssumptionsSection(plan), "Add assumption");
+    }
+
+    private void appendPlanEditorModels(Form form, boolean isNew, PlanDefinition plan) {
+        String currentWorktype = plan != null ? plan.promptProfile() : null;
+        Div modelGrid = new Div().withClass("orch-form-grid");
+        modelGrid.withChild(label("Manager Type", worktypeSelect(currentWorktype)));
+        modelGrid.withChild(label("Planning Model", modelSelectWithCurrent("planningModel", isNew ? null : plan.planningModel(), chatService.availableModels())
+            .withId("plan-planning-model")));
+        modelGrid.withChild(label("Execution Model", modelSelectWithCurrent("executionModel", isNew ? null : plan.executionModel(), chatService.availableModels())
+            .withId("plan-execution-model")));
+        form.withChild(modelGrid);
+    }
+
+    private void appendPlanEditorAdvancedMetadata(Form form, PlanDefinition plan) {
+        Div advanced = new Div().withId("plan-advanced").withClass("field-group");
+        advanced.withChild(new HtmlTag("details")
+            .withChild(new HtmlTag("summary").withInnerText("Advanced"))
+            .withChild(new Div().withClass("orch-form-grid")
+                .withChild(label("Kind", new HtmlTag("span")
+                    .withInnerText(plan.kind() != null ? plan.kind().name() : "TASK_TEMPLATE")))
+                .withChild(label("Status", new HtmlTag("span")
+                    .withInnerText(plan.status() != null ? plan.status().name() : "UNKNOWN")))
+                .withChild(label("ID", new HtmlTag("code")
+                    .withInnerText(nn(plan.id()))))
+                .withChild(label("Conversation", new HtmlTag("code")
+                    .withInnerText(nn(plan.conversationId()))))
+                .withChild(label("Plan Start Message Order", new HtmlTag("span")
+                    .withInnerText(String.valueOf(plan.planStartMessageOrder()))))
+                .withChild(label("Pending Question Index", new HtmlTag("span")
+                    .withInnerText(String.valueOf(plan.pendingQuestionIndex())))))
+            .withChild(new Div().withClass("orch-form-stack")
+                .withChild(label("Planning Task", autosizingTextArea("planningTask", nn(plan.planningTask()), 2, 18)))
+                .withChild(label("Final Message", autosizingTextArea("finalMessage", nn(plan.finalMessage()), 3, 18)))
+                .withChild(label("Settings Override JSON", autosizingTextArea("settingsOverrideJson", nn(plan.settingsOverrideJson()), 4, 20)))));
+        form.withChild(advanced);
+    }
+
+    private void appendPlanEditorActionButtons(Form form, boolean isNew, String planId) {
+        Div actions = new Div().withClass("tool-actions");
+        actions.withChild(Button.create("Save").withClass("orch-primary").withAttribute("type", "submit"));
+        if (!isNew) {
+            actions.withChild(Button.create("Finalize Task")
+                .withAttribute("hx-post", "/plans/_editor/" + planId + "/finalize")
+                .withAttribute("hx-target", "#plan-editor-container")
+                .withAttribute("hx-swap", "innerHTML"));
+            actions.withChild(Button.create("Submit to Agent")
+                .withClass("orch-primary")
+                .withAttribute("hx-get", "/plans/_submit-form/" + planId)
+                .withAttribute("hx-target", "#plan-submit-container")
+                .withAttribute("hx-swap", "innerHTML"));
+        }
+        form.withChild(actions);
     }
 
     private Component planEditorTabs(String planId, boolean chatTab) {

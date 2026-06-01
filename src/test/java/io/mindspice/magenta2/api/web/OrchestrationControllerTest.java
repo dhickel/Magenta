@@ -503,6 +503,7 @@ class OrchestrationControllerTest {
     void planEditorFragmentForExistingPlanRendersAllSections() {
         String planId = "plan-abc";
         String html = controller().planEditor(planId);
+        var document = Jsoup.parse(html);
 
         // Has PUT form for update
         assertThat(html).contains("hx-put=\"/plans/_editor/" + planId + "\"");
@@ -541,6 +542,38 @@ class OrchestrationControllerTest {
 
         // No example field in input editor
         assertThat(html).doesNotContain("example");
+
+        assertPlanEditorListSection(document, planId, "deliverables", "Add deliverable");
+        assertPlanEditorListSection(document, planId, "inputs", "Add input field");
+        assertPlanEditorListSection(document, planId, "outputs", "Add output field");
+        assertPlanEditorListSection(document, planId, "steps", "Add step");
+        assertPlanEditorListSection(document, planId, "validation", "Add criterion");
+        assertPlanEditorListSection(document, planId, "assumptions", "Add assumption");
+
+        assertThat(document.getElementById("plan-submit-container")).isNotNull();
+        var runsContainer = document.getElementById("plan-runs-container");
+        assertThat(runsContainer).isNotNull();
+        assertThat(runsContainer.attr("hx-get")).isEqualTo("/plans/_runs/" + planId);
+        assertThat(runsContainer.attr("hx-trigger")).isEqualTo("load");
+        assertThat(runsContainer.attr("hx-swap")).isEqualTo("innerHTML");
+    }
+
+    private static void assertPlanEditorListSection(org.jsoup.nodes.Document document, String planId, String section, String buttonText) {
+        String sectionId = "plan-" + section + "-section";
+        assertThat(document.getElementById(sectionId)).isNotNull();
+
+        var addButton = document.selectFirst("button[hx-post=\"/plans/_editor/" + planId + "/" + section + "\"]");
+        assertThat(addButton).isNotNull();
+        assertThat(addButton.text()).isEqualTo(buttonText);
+        assertThat(addButton.attr("hx-target")).isEqualTo("#" + sectionId);
+        assertThat(addButton.attr("hx-swap")).isEqualTo("innerHTML");
+    }
+
+    @Test
+    void planRunsFragmentRendersForSavedPlan() {
+        String html = controller().planRunsFragment("plan-abc");
+
+        assertThat(html).contains("No runs yet.");
     }
 
     @Test
@@ -2776,6 +2809,10 @@ class OrchestrationControllerTest {
             );
             this.storedPlan = saved;
             return saved;
+        }
+
+        @Override public java.util.List<io.mindspice.magenta2.ai.chat.plan.PlanRun> listRuns(String planId) {
+            return List.of();
         }
     }
 
