@@ -415,6 +415,18 @@ public class WorkspaceRepository {
         );
     }
 
+    public List<RunOutputArtifact> findArtifactsByRunIds(List<String> runIds) {
+        if (runIds == null || runIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        String inSql = String.join(",", java.util.Collections.nCopies(runIds.size(), "?"));
+        return jdbcTemplate.query(
+            "select * from run_output_artifacts where run_id in (" + inSql + ") order by output_name",
+            (rs, rowNum) -> toArtifact(rs),
+            runIds.toArray()
+        );
+    }
+
     public Optional<RunOutputArtifact> findArtifactById(String artifactId) {
         if (!StringUtils.hasText(artifactId)) return Optional.empty();
         return jdbcTemplate.query(
